@@ -1,0 +1,39 @@
+# Dependencies
+node_modules/
+
+# Environment variables
+.env
+backend/.env
+
+# Build output
+dist/
+build/
+
+# Prisma generated client
+backend/node_modules/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+*.swp
+*.swo
+
+# Docker volumes (local data)
+postgres_data/
+
+# OpenSpec
+openspec/
+
+# docs
+docs/
+
+# cursor
+.cursor/
+Agents.md

@@ -1,0 +1,16 @@
+{
+  "name": "workhours-bot",
+  "version": "0.0.1",
+  "private": true,
+  "workspaces": [
+    "backend",
+    "shared"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace=backend"
+  },
+  "devDependencies": {
+    "openspec": "^0.0.0"
+  }
+}
+
