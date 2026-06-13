@@ -2,6 +2,8 @@ import { describe, it, mock, before, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
 import type { Module } from "node:module";
+import { manualEndTimeToUtc } from "@/utils/DateUtils";
+import { EndWorkdaySchema } from "@/validators/WorkdaySchemas";
 
 function injectCacheStub(
   resolvedPath: string,
@@ -355,5 +357,118 @@ describe("WorkdayService", async () => {
         return true;
       });
     });
+  });
+
+  // ── endWorkday – previous-day branch ─────────────────────────────────────────
+
+  describe("endWorkday – previous-day close", () => {
+    it("applies manualEndTime to the original workDate, not today", async () => {
+      mockFindOpenRecord.mock.mockImplementationOnce(
+        async () => makePrevDayOpenRecord()
+      );
+      // Update mock must echo back the endTime it receives
+      mockUpdateDailyRecord.mock.mockImplementationOnce(
+        async (id: string, input: { endTime: Date; workedMinutes: number }) => ({
+          id,
+          telegramId: "user1",
+          workDate: PREV_WORK_DATE,
+          startTime: new Date(Date.now() - 26 * 60 * 60 * 1000),
+          expectedEndTime: new Date(),
+          endTime: input.endTime,
+          workedMinutes: input.workedMinutes,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        })
+      );
+
+      const result = await endWorkday("user1", "17:30");
+
+      // workDate in result must be the PREVIOUS day
+      assert.equal(result.workDate, "2026-06-12");
+
+      // endTime stored must equal manualEndTimeToUtc("2026-06-12", "17:30", timezone)
+      const expectedEndTime = manualEndTimeToUtc(
+        "2026-06-12",
+        "17:30",
+        FIXED_TIMEZONE
+      );
+      const actualEndTime = mockUpdateDailyRecord.mock.calls[0].arguments[1].endTime as Date;
+      assert.equal(
+        actualEndTime.toISOString(),
+        expectedEndTime.toISOString()
+      );
+    });
+
+    it("does NOT use the current date for endTime (endTime is on prev workDate)", async () => {
+      mockFindOpenRecord.mock.mockImplementationOnce(
+        async () => makePrevDayOpenRecord()
+      );
+      mockUpdateDailyRecord.mock.mockImplementationOnce(
+        async (id: string, input: { endTime: Date; workedMinutes: number }) => ({
+          id,
+          telegramId: "user1",
+          workDate: PREV_WORK_DATE,
+          startTime: new Date(Date.now() - 26 * 60 * 60 * 1000),
+          expectedEndTime: new Date(),
+          endTime: input.endTime,
+          workedMinutes: input.workedMinutes,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        })
+      );
+
+      await endWorkday("user1", "09:00");
+
+      const endTime = mockUpdateDailyRecord.mock.calls[0].arguments[1].endTime as Date;
+      // The endTime's UTC date must be 2026-06-12, not 2026-06-13
+      assert.ok(
+        endTime.toISOString().startsWith("2026-06-12"),
+        `Expected endTime on 2026-06-12, got ${endTime.toISOString()}`
+      );
+    });
+
+    it("throws MANUAL_END_TIME_REQUIRED when previous-day record has no manualEndTime", async () => {
+      mockFindOpenRecord.mock.mockImplementationOnce(
+        async () => makePrevDayOpenRecord()
+      );
+
+      await assert.rejects(
+        () => endWorkday("user1"),
+        (err: unknown) => {
+          assert.equal(
+            (err as { code: string }).code,
+            "MANUAL_END_TIME_REQUIRED"
+          );
+          return true;
+        }
+      );
+    });
+  });
+
+  // ── EndWorkdaySchema – manualEndTime validation ───────────────────────────────
+
+  describe("EndWorkdaySchema – manualEndTime format", () => {
+    const valid = ["00:00", "09:00", "17:30", "23:59"];
+    const invalid = ["24:00", "25:00", "12:60", "9:00", "1730", "abc", ""];
+
+    for (const t of valid) {
+      it(`accepts "${t}"`, () => {
+        const result = EndWorkdaySchema.safeParse({
+          telegramId: "u1",
+          manualEndTime: t,
+        });
+        assert.ok(result.success, `Expected "${t}" to be valid`);
+      });
+    }
+
+    for (const t of invalid) {
+      it(`rejects "${t}"`, () => {
+        const result = EndWorkdaySchema.safeParse({
+          telegramId: "u1",
+          manualEndTime: t,
+        });
+        assert.ok(!result.success, `Expected "${t}" to be invalid`);
+      });
+    }
   });
 });
