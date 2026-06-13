@@ -66,11 +66,3 @@ npx prisma generate
 ```bash
 npm run dev
 ```
-
-## Documentation
-
-- [`docs/Spec.md`](docs/Spec.md) — Product requirements
-- [`docs/API.md`](docs/API.md) — Backend API endpoints
-- [`docs/Architecture.md`](docs/Architecture.md) — Project structure and layering
-- [`docs/DatabaseSchema.md`](docs/DatabaseSchema.md) — PostgreSQL schema reference
-- [`docs/DataModels.md`](docs/DataModels.md) — TypeScript data models
