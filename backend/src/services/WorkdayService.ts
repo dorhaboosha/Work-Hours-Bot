@@ -1,8 +1,13 @@
 import type { DailyRecord } from "@/generated/prisma/client";
-import { createDailyRecord } from "@/repositories/DailyRecordRepository";
+import {
+  createDailyRecord,
+  findOpenRecord,
+  findRecordByDate,
+} from "@/repositories/DailyRecordRepository";
 import { getSettingsOrThrow } from "@/services/SettingsService";
 import { calcExpectedEndTime } from "@/services/TimeCalculationService";
-import { getLocalDate } from "@/utils/DateUtils";
+import { getLocalDate, utcToLocalDate } from "@/utils/DateUtils";
+import { AppError } from "@/utils/AppError";
 import { DateTime } from "luxon";
 
 /**
@@ -16,26 +21,50 @@ function localDateStringToUtcMidnight(dateStr: string): Date {
 /**
  * Starts today's workday for the given user.
  *
- * Happy path:
- * 1. Load user settings (throws USER_SETTINGS_NOT_FOUND if absent).
- * 2. Determine today's local workDate from the user's timezone.
- * 3. Record startTime as the current UTC instant.
- * 4. Calculate expectedEndTime = startTime + dailyRequiredMinutes.
- * 5. Persist and return the new DailyRecord.
- *
- * Guards (DAILY_RECORD_ALREADY_EXISTS, PREVIOUS_RECORD_STILL_OPEN) are added
- * in task 6.5.
+ * Guards (checked in order):
+ * - PREVIOUS_RECORD_STILL_OPEN  – an open record exists from a prior local date.
+ * - DAILY_RECORD_ALREADY_EXISTS – a record (open or closed) already exists for
+ *                                  today's local date.
+ * - USER_SETTINGS_NOT_FOUND     – no settings found (from getSettingsOrThrow).
  */
 export async function startWorkday(telegramId: string): Promise<DailyRecord> {
   const settings = await getSettingsOrThrow(telegramId);
 
-  const workDateStr = getLocalDate(settings.timezone);
-  const workDate = localDateStringToUtcMidnight(workDateStr);
+  const todayStr = getLocalDate(settings.timezone);
+  const todayDate = localDateStringToUtcMidnight(todayStr);
+
+  // Check for any open (unfinished) record
+  const openRecord = await findOpenRecord(telegramId);
+  if (openRecord !== null) {
+    const openDateStr = utcToLocalDate(openRecord.workDate, settings.timezone);
+    if (openDateStr !== todayStr) {
+      // Open record is from a previous local date — user must close it first
+      throw new AppError(
+        "PREVIOUS_RECORD_STILL_OPEN",
+        `You have an unfinished workday from ${openDateStr}. Close it with /end HH:mm before starting a new one.`
+      );
+    }
+    // Open record is for today — already started
+    throw new AppError(
+      "DAILY_RECORD_ALREADY_EXISTS",
+      "You have already started today's workday."
+    );
+  }
+
+  // Also guard against a closed record for today (duplicate date)
+  const existingToday = await findRecordByDate(telegramId, todayDate);
+  if (existingToday !== null) {
+    throw new AppError(
+      "DAILY_RECORD_ALREADY_EXISTS",
+      "A record for today already exists."
+    );
+  }
+
   const startTime = new Date();
   const expectedEndTime = calcExpectedEndTime(
     startTime,
     settings.dailyRequiredMinutes
   );
 
-  return createDailyRecord({ telegramId, workDate, startTime, expectedEndTime });
+  return createDailyRecord({ telegramId, workDate: todayDate, startTime, expectedEndTime });
 }
