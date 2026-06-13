@@ -1,0 +1,20 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model UserSettings {
+  id                   String   @id @default(uuid())
+  telegramId           String   @unique @map("telegram_id")
+  dailyRequiredMinutes Int      @map("daily_required_minutes")
+  timezone             String
+  workdays             Int[]
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  @@map("user_settings")
+}
