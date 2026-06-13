@@ -1,10 +1,11 @@
-import type { DailyRecord } from "@/generated/prisma/client";
 import {
   createDailyRecord,
   findOpenRecord,
   findRecordByDate,
   updateDailyRecord,
+  listRecordsByRange,
 } from "@/repositories/DailyRecordRepository";
+import type { DailyRecord } from "@/generated/prisma/client";
 import { getSettingsOrThrow } from "@/services/SettingsService";
 import {
   calcExpectedEndTime,
@@ -199,4 +200,26 @@ export async function endWorkday(
     requiredMinutes: settings.dailyRequiredMinutes,
     balanceMinutes,
   };
+}
+
+/**
+ * Lists daily records for a user, optionally filtered to a date window.
+ * `from` and `to` are YYYY-MM-DD strings in the user's local timezone.
+ * Verifies settings exist before querying (throws USER_SETTINGS_NOT_FOUND).
+ */
+export async function listWorkdays(
+  telegramId: string,
+  from?: string,
+  to?: string
+): Promise<DailyRecord[]> {
+  await getSettingsOrThrow(telegramId);
+
+  const fromDate = from !== undefined
+    ? localDateStringToUtcMidnight(from)
+    : undefined;
+  const toDate = to !== undefined
+    ? localDateStringToUtcMidnight(to)
+    : undefined;
+
+  return listRecordsByRange(telegramId, fromDate, toDate);
 }
