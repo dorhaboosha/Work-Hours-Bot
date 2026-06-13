@@ -3,6 +3,7 @@ import {
   findUserSettingsByTelegramId,
   upsertUserSettings,
 } from "@/repositories/UserSettingsRepository";
+import { AppError } from "@/utils/AppError";
 import { decimalHoursToMinutes } from "@shared/utils/timeUtils";
 import type { Weekday } from "@shared/types/CoreTypes";
 
@@ -49,8 +50,28 @@ export async function setupSettings(
   });
 }
 
+/** Returns settings or null — use when absence is not an error. */
 export async function getSettings(
   telegramId: string
 ): Promise<UserSettings | null> {
   return findUserSettingsByTelegramId(telegramId);
+}
+
+/**
+ * Returns settings or throws USER_SETTINGS_NOT_FOUND.
+ * Use this in any flow that requires settings to exist before proceeding.
+ */
+export async function getSettingsOrThrow(
+  telegramId: string
+): Promise<UserSettings> {
+  const settings = await findUserSettingsByTelegramId(telegramId);
+
+  if (!settings) {
+    throw new AppError(
+      "USER_SETTINGS_NOT_FOUND",
+      "User settings not found. Please run /setup first."
+    );
+  }
+
+  return settings;
 }
