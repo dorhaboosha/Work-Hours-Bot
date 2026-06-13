@@ -134,9 +134,10 @@ export async function getTodayStatus(
  *   The current date/time is NEVER used for previous-day records.
  *
  * Throws:
- * - USER_SETTINGS_NOT_FOUND    – no settings.
- * - ACTIVE_RECORD_NOT_FOUND    – no open record at all.
- * - MANUAL_END_TIME_REQUIRED   – open record is from a prior date but no time given.
+ * - USER_SETTINGS_NOT_FOUND      – no settings.
+ * - DAILY_RECORD_ALREADY_CLOSED  – today's record exists but is already closed.
+ * - ACTIVE_RECORD_NOT_FOUND      – no open record and no closed record for today.
+ * - MANUAL_END_TIME_REQUIRED     – open record is from a prior date but no time given.
  */
 export async function endWorkday(
   telegramId: string,
@@ -144,9 +145,18 @@ export async function endWorkday(
 ): Promise<EndWorkdayResult> {
   const settings = await getSettingsOrThrow(telegramId);
   const todayStr = getLocalDate(settings.timezone);
+  const todayDate = localDateStringToUtcMidnight(todayStr);
 
   const openRecord = await findOpenRecord(telegramId);
   if (openRecord === null) {
+    // No open record — check whether today already has a closed one
+    const closedToday = await findRecordByDate(telegramId, todayDate);
+    if (closedToday !== null) {
+      throw new AppError(
+        "DAILY_RECORD_ALREADY_CLOSED",
+        "Today's workday is already closed."
+      );
+    }
     throw new AppError(
       "ACTIVE_RECORD_NOT_FOUND",
       "No active workday to end. Use /start to begin your day."
