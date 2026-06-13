@@ -5,10 +5,15 @@ import {
   findRecordByDate,
 } from "@/repositories/DailyRecordRepository";
 import { getSettingsOrThrow } from "@/services/SettingsService";
-import { calcExpectedEndTime } from "@/services/TimeCalculationService";
+import {
+  calcExpectedEndTime,
+  calcWorkedMinutesSoFar,
+  calcRemainingMinutes,
+} from "@/services/TimeCalculationService";
 import { getLocalDate, utcToLocalDate } from "@/utils/DateUtils";
 import { AppError } from "@/utils/AppError";
 import { DateTime } from "luxon";
+import type { WorkdayStatus } from "@shared/types/ViewTypes";
 
 /**
  * Converts a local YYYY-MM-DD date string to a UTC midnight Date so it can be
@@ -67,4 +72,51 @@ export async function startWorkday(telegramId: string): Promise<DailyRecord> {
   );
 
   return createDailyRecord({ telegramId, workDate: todayDate, startTime, expectedEndTime });
+}
+
+/**
+ * Returns today's live workday status for the given user.
+ *
+ * Guards:
+ * - PREVIOUS_RECORD_STILL_OPEN – open record exists from a prior local date.
+ * - ACTIVE_RECORD_NOT_FOUND    – no open record for today.
+ */
+export async function getTodayStatus(
+  telegramId: string
+): Promise<WorkdayStatus> {
+  const settings = await getSettingsOrThrow(telegramId);
+  const todayStr = getLocalDate(settings.timezone);
+
+  const openRecord = await findOpenRecord(telegramId);
+
+  if (openRecord !== null) {
+    const openDateStr = utcToLocalDate(openRecord.workDate, settings.timezone);
+    if (openDateStr !== todayStr) {
+      throw new AppError(
+        "PREVIOUS_RECORD_STILL_OPEN",
+        `You have an unfinished workday from ${openDateStr}. Close it with /end HH:mm.`
+      );
+    }
+
+    // Active record is for today — compute live metrics
+    const workedMinutesSoFar = calcWorkedMinutesSoFar(openRecord.startTime);
+    const remainingMinutes = calcRemainingMinutes(
+      workedMinutesSoFar,
+      settings.dailyRequiredMinutes
+    );
+
+    return {
+      workDate: openDateStr,
+      startTime: openRecord.startTime.toISOString(),
+      expectedEndTime: openRecord.expectedEndTime.toISOString(),
+      workedMinutesSoFar,
+      remainingMinutes,
+      isActive: true,
+    };
+  }
+
+  throw new AppError(
+    "ACTIVE_RECORD_NOT_FOUND",
+    "No active workday found. Use /start to begin your day."
+  );
 }
