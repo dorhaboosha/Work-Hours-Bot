@@ -13,7 +13,7 @@ import {
   calcRemainingMinutes,
   calcBalance,
 } from "@/services/TimeCalculationService";
-import { getLocalDate, utcToLocalDate } from "@/utils/DateUtils";
+import { getLocalDate, utcToLocalDate, manualEndTimeToUtc } from "@/utils/DateUtils";
 import { AppError } from "@/utils/AppError";
 import { DateTime } from "luxon";
 import type { WorkdayStatus, EndWorkdayResult } from "@shared/types/ViewTypes";
@@ -125,15 +125,18 @@ export async function getTodayStatus(
 }
 
 /**
- * Closes the user's active workday using the current time.
- * This is the today-only branch of /end (no manualEndTime).
+ * Closes the user's active workday.
  *
- * Guards (task 6.9) and the previous-day branch (task 6.8) extend this.
+ * Two branches:
+ * - Today's record  → close with the current UTC time (no manualEndTime needed).
+ * - Previous-day record → manualEndTime (HH:mm) is required; it is applied to
+ *   the record's original workDate in the user's timezone and converted to UTC.
+ *   The current date/time is NEVER used for previous-day records.
  *
  * Throws:
- * - USER_SETTINGS_NOT_FOUND     – no settings.
- * - ACTIVE_RECORD_NOT_FOUND     – no open record at all.
- * - PREVIOUS_RECORD_STILL_OPEN  – open record is from a prior date (needs /end HH:mm).
+ * - USER_SETTINGS_NOT_FOUND    – no settings.
+ * - ACTIVE_RECORD_NOT_FOUND    – no open record at all.
+ * - MANUAL_END_TIME_REQUIRED   – open record is from a prior date but no time given.
  */
 export async function endWorkday(
   telegramId: string,
@@ -151,16 +154,25 @@ export async function endWorkday(
   }
 
   const openDateStr = utcToLocalDate(openRecord.workDate, settings.timezone);
-  if (openDateStr !== todayStr) {
-    // Previous-day branch — handled in task 6.8; guard only for now
-    throw new AppError(
-      "PREVIOUS_RECORD_STILL_OPEN",
-      `Your open workday is from ${openDateStr}. Use /end HH:mm to close it.`
-    );
+  const isPreviousDay = openDateStr !== todayStr;
+
+  let endTime: Date;
+
+  if (isPreviousDay) {
+    // Previous-day branch: manualEndTime is mandatory
+    if (!manualEndTime) {
+      throw new AppError(
+        "MANUAL_END_TIME_REQUIRED",
+        `Your open workday is from ${openDateStr}. Provide an end time with /end HH:mm.`
+      );
+    }
+    // Apply the given HH:mm to the record's original workDate in the user's timezone
+    endTime = manualEndTimeToUtc(openDateStr, manualEndTime, settings.timezone);
+  } else {
+    // Today's branch: use the current UTC instant
+    endTime = new Date();
   }
 
-  // Today's active record — close with current time
-  const endTime = new Date();
   const workedMinutes = calcWorkedMinutes(openRecord.startTime, endTime);
   const balanceMinutes = calcBalance(workedMinutes, settings.dailyRequiredMinutes);
 
@@ -169,7 +181,7 @@ export async function endWorkday(
   return {
     id: updated.id,
     telegramId: updated.telegramId,
-    workDate: utcToLocalDate(updated.workDate, settings.timezone),
+    workDate: openDateStr,
     startTime: updated.startTime.toISOString(),
     expectedEndTime: updated.expectedEndTime.toISOString(),
     endTime: updated.endTime!.toISOString(),
