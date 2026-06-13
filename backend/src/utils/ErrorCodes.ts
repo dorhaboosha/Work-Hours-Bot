@@ -1,0 +1,15 @@
+import type { ErrorCode } from "@shared/types/ApiTypes";
+
+/** Maps each ErrorCode to its HTTP status code. */
+export const ERROR_HTTP_STATUS: Record<ErrorCode, number> = {
+  VALIDATION_ERROR: 400,
+  USER_SETTINGS_NOT_FOUND: 404,
+  DAILY_RECORD_NOT_FOUND: 404,
+  ACTIVE_RECORD_NOT_FOUND: 404,
+  DAILY_RECORD_ALREADY_EXISTS: 409,
+  PREVIOUS_RECORD_STILL_OPEN: 409,
+  MANUAL_END_TIME_REQUIRED: 409,
+  DAILY_RECORD_ALREADY_CLOSED: 409,
+  CONFLICT: 409,
+  INTERNAL_ERROR: 500,
+};
