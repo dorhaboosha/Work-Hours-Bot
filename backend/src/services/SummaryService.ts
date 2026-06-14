@@ -1,5 +1,10 @@
 import { DateTime } from "luxon";
 import type { Weekday } from "@shared/types/CoreTypes";
+import type { DailyRecord } from "@/generated/prisma/client";
+import { listRecordsByRange } from "@/repositories/DailyRecordRepository";
+import { getSettingsOrThrow } from "@/services/SettingsService";
+import { utcToLocalDate } from "@/utils/DateUtils";
+import type { WorkSummary } from "@shared/types/ViewTypes";
 
 // ── Internal types ────────────────────────────────────────────────────────────
 
@@ -120,5 +125,138 @@ export function getMonthWindow(
     startDate: firstDay.toFormat("yyyy-MM-dd"),
     endDate: lastDay.toFormat("yyyy-MM-dd"),
     workdayDates,
+  };
+}
+
+// ── Aggregation ───────────────────────────────────────────────────────────────
+
+/**
+ * Converts a local YYYY-MM-DD date string to a UTC midnight Date for use as a
+ * Prisma `@db.Date` range boundary.
+ */
+function localDateToUtcMidnight(dateStr: string): Date {
+  return DateTime.fromISO(dateStr, { zone: "utc" }).toJSDate();
+}
+
+interface AggregateResult {
+  workdaysCount: number;
+  requiredMinutes: number;
+  workedMinutes: number;
+  balanceMinutes: number;
+}
+
+/**
+ * Aggregates totals across a list of expected workday dates.
+ *
+ * - Closed record present → use its stored `workedMinutes`.
+ * - No record for the date  → counts as 0 worked (missing day).
+ * - Open record (endTime = null) → caller should pass its `workedMinutes`
+ *   pre-filled with the live worked-so-far value (task 7.5 responsibility).
+ */
+export function aggregateSummary(
+  workdayDates: string[],
+  records: DailyRecord[],
+  dailyRequiredMinutes: number,
+  timezone: string
+): AggregateResult {
+  // Build lookup: local date string → record
+  const byDate = new Map<string, DailyRecord>();
+  for (const rec of records) {
+    byDate.set(utcToLocalDate(rec.workDate, timezone), rec);
+  }
+
+  let workedMinutes = 0;
+  for (const date of workdayDates) {
+    const rec = byDate.get(date);
+    workedMinutes += rec?.workedMinutes ?? 0;
+  }
+
+  const workdaysCount = workdayDates.length;
+  const requiredMinutes = workdaysCount * dailyRequiredMinutes;
+  const balanceMinutes = workedMinutes - requiredMinutes;
+
+  return { workdaysCount, requiredMinutes, workedMinutes, balanceMinutes };
+}
+
+// ── Public service functions ──────────────────────────────────────────────────
+
+/**
+ * Returns the week summary for a user.
+ * Open current-day contribution is added in task 7.5.
+ * PREVIOUS_RECORD_STILL_OPEN guard is added in task 7.6.
+ */
+export async function getWeekSummary(
+  telegramId: string,
+  referenceDate?: string
+): Promise<WorkSummary> {
+  const settings = await getSettingsOrThrow(telegramId);
+  const workdays = settings.workdays as Weekday[];
+  const window = getWeekWindow(workdays, settings.timezone, referenceDate);
+
+  const records =
+    window.workdayDates.length > 0
+      ? await listRecordsByRange(
+          telegramId,
+          localDateToUtcMidnight(window.workdayDates[0]),
+          localDateToUtcMidnight(window.workdayDates[window.workdayDates.length - 1])
+        )
+      : [];
+
+  const { workdaysCount, requiredMinutes, workedMinutes, balanceMinutes } =
+    aggregateSummary(
+      window.workdayDates,
+      records,
+      settings.dailyRequiredMinutes,
+      settings.timezone
+    );
+
+  return {
+    period: "week",
+    startDate: window.startDate,
+    endDate: window.endDate,
+    workdaysCount,
+    requiredMinutes,
+    workedMinutes,
+    balanceMinutes,
+  };
+}
+
+/**
+ * Returns the month summary for a user.
+ * Open current-day contribution is added in task 7.5.
+ * PREVIOUS_RECORD_STILL_OPEN guard is added in task 7.6.
+ */
+export async function getMonthSummary(
+  telegramId: string,
+  referenceMonth?: string
+): Promise<WorkSummary> {
+  const settings = await getSettingsOrThrow(telegramId);
+  const workdays = settings.workdays as Weekday[];
+  const window = getMonthWindow(workdays, settings.timezone, referenceMonth);
+
+  const records =
+    window.workdayDates.length > 0
+      ? await listRecordsByRange(
+          telegramId,
+          localDateToUtcMidnight(window.workdayDates[0]),
+          localDateToUtcMidnight(window.workdayDates[window.workdayDates.length - 1])
+        )
+      : [];
+
+  const { workdaysCount, requiredMinutes, workedMinutes, balanceMinutes } =
+    aggregateSummary(
+      window.workdayDates,
+      records,
+      settings.dailyRequiredMinutes,
+      settings.timezone
+    );
+
+  return {
+    period: "month",
+    month: window.month,
+    workdaysCount,
+    requiredMinutes,
+    workedMinutes,
+    balanceMinutes,
   };
 }
