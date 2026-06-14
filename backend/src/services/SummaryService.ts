@@ -4,6 +4,7 @@ import type { DailyRecord } from "@/generated/prisma/client";
 import { listRecordsByRange } from "@/repositories/DailyRecordRepository";
 import { getSettingsOrThrow } from "@/services/SettingsService";
 import { utcToLocalDate } from "@/utils/DateUtils";
+import { calcWorkedMinutesSoFar } from "@/services/TimeCalculationService";
 import type { WorkSummary } from "@shared/types/ViewTypes";
 
 // ── Internal types ────────────────────────────────────────────────────────────
@@ -178,11 +179,36 @@ export function aggregateSummary(
   return { workdaysCount, requiredMinutes, workedMinutes, balanceMinutes };
 }
 
+// ── Open-day enrichment ───────────────────────────────────────────────────────
+
+/**
+ * If there is an open record whose local date falls within `workdayDates`,
+ * replaces its `workedMinutes` in the array with the live worked-so-far value.
+ *
+ * `records` comes from `listRecordsByRange` and already includes open records
+ * (no endTime filter). This keeps `aggregateSummary` side-effect-free.
+ */
+function enrichWithOpenDay(
+  records: DailyRecord[],
+  workdayDates: string[],
+  timezone: string
+): DailyRecord[] {
+  const openRecord = records.find((r) => r.endTime === null);
+  if (openRecord === null || openRecord === undefined) return records;
+
+  const openDateStr = utcToLocalDate(openRecord.workDate, timezone);
+  if (!workdayDates.includes(openDateStr)) return records;
+
+  const liveMinutes = calcWorkedMinutesSoFar(openRecord.startTime);
+  return records.map((r) =>
+    r.id === openRecord.id ? { ...r, workedMinutes: liveMinutes } : r
+  );
+}
+
 // ── Public service functions ──────────────────────────────────────────────────
 
 /**
  * Returns the week summary for a user.
- * Open current-day contribution is added in task 7.5.
  * PREVIOUS_RECORD_STILL_OPEN guard is added in task 7.6.
  */
 export async function getWeekSummary(
@@ -193,7 +219,7 @@ export async function getWeekSummary(
   const workdays = settings.workdays as Weekday[];
   const window = getWeekWindow(workdays, settings.timezone, referenceDate);
 
-  const records =
+  const rawRecords =
     window.workdayDates.length > 0
       ? await listRecordsByRange(
           telegramId,
@@ -201,6 +227,12 @@ export async function getWeekSummary(
           localDateToUtcMidnight(window.workdayDates[window.workdayDates.length - 1])
         )
       : [];
+
+  const records = enrichWithOpenDay(
+    rawRecords,
+    window.workdayDates,
+    settings.timezone
+  );
 
   const { workdaysCount, requiredMinutes, workedMinutes, balanceMinutes } =
     aggregateSummary(
@@ -223,7 +255,6 @@ export async function getWeekSummary(
 
 /**
  * Returns the month summary for a user.
- * Open current-day contribution is added in task 7.5.
  * PREVIOUS_RECORD_STILL_OPEN guard is added in task 7.6.
  */
 export async function getMonthSummary(
@@ -234,7 +265,7 @@ export async function getMonthSummary(
   const workdays = settings.workdays as Weekday[];
   const window = getMonthWindow(workdays, settings.timezone, referenceMonth);
 
-  const records =
+  const rawRecords =
     window.workdayDates.length > 0
       ? await listRecordsByRange(
           telegramId,
@@ -242,6 +273,12 @@ export async function getMonthSummary(
           localDateToUtcMidnight(window.workdayDates[window.workdayDates.length - 1])
         )
       : [];
+
+  const records = enrichWithOpenDay(
+    rawRecords,
+    window.workdayDates,
+    settings.timezone
+  );
 
   const { workdaysCount, requiredMinutes, workedMinutes, balanceMinutes } =
     aggregateSummary(
