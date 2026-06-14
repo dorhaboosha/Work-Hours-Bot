@@ -1,10 +1,11 @@
 import { DateTime } from "luxon";
 import type { Weekday } from "@shared/types/CoreTypes";
 import type { DailyRecord } from "@/generated/prisma/client";
-import { listRecordsByRange } from "@/repositories/DailyRecordRepository";
+import { listRecordsByRange, findOpenRecord } from "@/repositories/DailyRecordRepository";
 import { getSettingsOrThrow } from "@/services/SettingsService";
-import { utcToLocalDate } from "@/utils/DateUtils";
+import { getLocalDate, utcToLocalDate } from "@/utils/DateUtils";
 import { calcWorkedMinutesSoFar } from "@/services/TimeCalculationService";
+import { AppError } from "@/utils/AppError";
 import type { WorkSummary } from "@shared/types/ViewTypes";
 
 // ── Internal types ────────────────────────────────────────────────────────────
@@ -179,6 +180,31 @@ export function aggregateSummary(
   return { workdaysCount, requiredMinutes, workedMinutes, balanceMinutes };
 }
 
+// ── Guards ────────────────────────────────────────────────────────────────────
+
+/**
+ * Throws PREVIOUS_RECORD_STILL_OPEN if the user has an open record whose
+ * local date is before today. A today-open record is allowed (used as
+ * worked-so-far in the summary).
+ */
+async function assertNoPreviousOpenRecord(
+  telegramId: string,
+  timezone: string
+): Promise<void> {
+  const openRecord = await findOpenRecord(telegramId);
+  if (openRecord === null) return;
+
+  const openDateStr = utcToLocalDate(openRecord.workDate, timezone);
+  const todayStr = getLocalDate(timezone);
+
+  if (openDateStr !== todayStr) {
+    throw new AppError(
+      "PREVIOUS_RECORD_STILL_OPEN",
+      `You have an unfinished workday from ${openDateStr}. Close it with /end HH:mm before viewing summaries.`
+    );
+  }
+}
+
 // ── Open-day enrichment ───────────────────────────────────────────────────────
 
 /**
@@ -209,13 +235,14 @@ function enrichWithOpenDay(
 
 /**
  * Returns the week summary for a user.
- * PREVIOUS_RECORD_STILL_OPEN guard is added in task 7.6.
+ * Throws PREVIOUS_RECORD_STILL_OPEN if a prior-day record is still open.
  */
 export async function getWeekSummary(
   telegramId: string,
   referenceDate?: string
 ): Promise<WorkSummary> {
   const settings = await getSettingsOrThrow(telegramId);
+  await assertNoPreviousOpenRecord(telegramId, settings.timezone);
   const workdays = settings.workdays as Weekday[];
   const window = getWeekWindow(workdays, settings.timezone, referenceDate);
 
@@ -255,13 +282,14 @@ export async function getWeekSummary(
 
 /**
  * Returns the month summary for a user.
- * PREVIOUS_RECORD_STILL_OPEN guard is added in task 7.6.
+ * Throws PREVIOUS_RECORD_STILL_OPEN if a prior-day record is still open.
  */
 export async function getMonthSummary(
   telegramId: string,
   referenceMonth?: string
 ): Promise<WorkSummary> {
   const settings = await getSettingsOrThrow(telegramId);
+  await assertNoPreviousOpenRecord(telegramId, settings.timezone);
   const workdays = settings.workdays as Weekday[];
   const window = getMonthWindow(workdays, settings.timezone, referenceMonth);
 
