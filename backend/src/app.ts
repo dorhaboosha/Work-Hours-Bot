@@ -2,6 +2,7 @@ import express from "express";
 import { errorMiddleware } from "@/middlewares/ErrorMiddleware";
 import settingsRouter from "@/routes/SettingsRoutes";
 import workdayRouter from "@/routes/WorkdayRoutes";
+import summaryRouter from "@/routes/SummaryRoutes";
 
 const app = express();
 
@@ -13,7 +14,7 @@ app.get("/health", (_req, res) => {
 
 app.use("/api/settings", settingsRouter);
 app.use("/api/workdays", workdayRouter);
-// app.use("/api/summaries", summaryRouter); (task 7.7)
+app.use("/api/summaries", summaryRouter);
 
 app.use(errorMiddleware);
 
