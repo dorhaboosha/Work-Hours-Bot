@@ -69,3 +69,56 @@ export function getWeekWindow(
     workdayDates,
   };
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * The resolved month window for a given YYYY-MM and workday config.
+ * All date strings are YYYY-MM-DD in the user's local timezone.
+ */
+export interface MonthWindow {
+  /** YYYY-MM of the period — used as summary `month`. */
+  month: string;
+  /** YYYY-MM-DD of the first day of the month. */
+  startDate: string;
+  /** YYYY-MM-DD of the last day of the month. */
+  endDate: string;
+  /** YYYY-MM-DD for every configured workday in the month, in ascending order. */
+  workdayDates: string[];
+}
+
+/**
+ * Computes all configured workday dates within the given calendar month.
+ *
+ * `referenceMonth` is YYYY-MM; defaults to the current month in the user's
+ * timezone when omitted.
+ */
+export function getMonthWindow(
+  workdays: Weekday[],
+  timezone: string,
+  referenceMonth?: string
+): MonthWindow {
+  const ref = referenceMonth
+    ? DateTime.fromISO(`${referenceMonth}-01`, { zone: timezone })
+    : DateTime.now().setZone(timezone).startOf("month");
+
+  const firstDay = ref.startOf("month");
+  const daysInMonth = firstDay.daysInMonth ?? 31;
+
+  const workdayDates: string[] = [];
+  for (let i = 0; i < daysInMonth; i++) {
+    const day = firstDay.plus({ days: i });
+    if (workdays.includes(luxonToJsWeekday(day.weekday))) {
+      workdayDates.push(day.toFormat("yyyy-MM-dd"));
+    }
+  }
+
+  const lastDay = firstDay.endOf("month");
+
+  return {
+    month: firstDay.toFormat("yyyy-MM"),
+    startDate: firstDay.toFormat("yyyy-MM-dd"),
+    endDate: lastDay.toFormat("yyyy-MM-dd"),
+    workdayDates,
+  };
+}
