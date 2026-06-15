@@ -1,9 +1,10 @@
 import type { Context } from "telegraf";
+import { DateTime } from "luxon";
 import { getWeekSummary } from "@/services/SummaryService";
 import { formatMinutesAsDuration, formatBalance } from "@/bot/utils/formatMessage";
 import { handleBotError } from "@/bot/utils/handleBotError";
 
-/** Matches an optional YYYY-MM-DD reference date argument. */
+/** Matches YYYY-MM-DD format (calendar validity checked separately via Luxon). */
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 export async function handleWeek(ctx: Context): Promise<void> {
@@ -15,9 +16,9 @@ export async function handleWeek(ctx: Context): Promise<void> {
 
   let referenceDate: string | undefined;
   if (args.length > 0) {
-    if (!DATE_RE.test(args[0])) {
+    if (!DATE_RE.test(args[0]) || !DateTime.fromISO(args[0]).isValid) {
       await ctx.reply(
-        "❌ Invalid date format. Use *YYYY-MM-DD* (e.g. `/week 2026-06-10`).",
+        "❌ Invalid date. Use a real calendar date in *YYYY-MM-DD* format (e.g. `/week 2026-06-10`).",
         { parse_mode: "Markdown" }
       );
       return;

@@ -1,9 +1,10 @@
 import type { Context } from "telegraf";
+import { DateTime } from "luxon";
 import { getMonthSummary } from "@/services/SummaryService";
 import { formatMinutesAsDuration, formatBalance } from "@/bot/utils/formatMessage";
 import { handleBotError } from "@/bot/utils/handleBotError";
 
-/** Matches an optional YYYY-MM reference month argument. */
+/** Matches YYYY-MM format (calendar validity checked separately via Luxon). */
 const MONTH_RE = /^\d{4}-\d{2}$/;
 
 export async function handleMonth(ctx: Context): Promise<void> {
@@ -15,9 +16,9 @@ export async function handleMonth(ctx: Context): Promise<void> {
 
   let referenceMonth: string | undefined;
   if (args.length > 0) {
-    if (!MONTH_RE.test(args[0])) {
+    if (!MONTH_RE.test(args[0]) || !DateTime.fromFormat(args[0], "yyyy-MM").isValid) {
       await ctx.reply(
-        "❌ Invalid month format. Use *YYYY-MM* (e.g. `/month 2026-06`).",
+        "❌ Invalid month. Use a real calendar month in *YYYY-MM* format (e.g. `/month 2026-06`).",
         { parse_mode: "Markdown" }
       );
       return;
