@@ -6,6 +6,15 @@ export type TelegramId = string;
 /** HH:mm 24-hour format, e.g. "17:30" */
 export type ManualEndTime = string;
 
+// --- Language ---
+
+export type LanguageCode = "en" | "he";
+
+export const LANGUAGE_LABELS: Record<LanguageCode, string> = {
+  en: "English",
+  he: "Hebrew",
+};
+
 // --- Weekday ---
 
 export type Weekday = 0 | 1 | 2 | 3 | 4 | 5 | 6;
@@ -34,6 +43,8 @@ export interface UserSettings {
   timezone: string;
   /** Configured workdays. Example: [0, 1, 2, 3, 4] = Sunday–Thursday */
   workdays: Weekday[];
+  /** Bot language selected by the user */
+  language: LanguageCode;
   /** ISO datetime */
   createdAt: string;
   /** ISO datetime */
