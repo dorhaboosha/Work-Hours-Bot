@@ -1,4 +1,11 @@
-import type { DailyRecordId, TelegramId } from "./CoreTypes";
+import type {
+  DailyRecord,
+  DailyRecordId,
+  DailyRecordType,
+  EditAction,
+  EditRecordState,
+  TelegramId,
+} from "./CoreTypes";
 
 // --- WorkdayStatus ---
 
@@ -31,6 +38,44 @@ export interface EndWorkdayResult {
   expectedEndTime: string;
   /** UTC timestamp */
   endTime: string;
+  /** Integer >= 0 */
+  workedMinutes: number;
+  requiredMinutes: number;
+  /** workedMinutes - requiredMinutes; positive = overtime, negative = under */
+  balanceMinutes: number;
+}
+
+// --- EditDayOptions ---
+
+/** Returned by GET /workdays/edit/:telegramId/:date */
+export interface EditDayOptions {
+  /** YYYY-MM-DD */
+  workDate: string;
+  /** dd-mm */
+  displayDate: string;
+  state: EditRecordState;
+  /** null when state is NO_RECORD */
+  record: DailyRecord | null;
+  allowedActions: EditAction[];
+}
+
+// --- EditWorkdayResult ---
+
+/** Returned by PATCH /workdays/edit/:telegramId/:date */
+export interface EditWorkdayResult {
+  id: DailyRecordId;
+  telegramId: TelegramId;
+  /** YYYY-MM-DD */
+  workDate: string;
+  /** dd-mm */
+  displayDate: string;
+  recordType: DailyRecordType;
+  /** UTC timestamp. null for absence records */
+  startTime?: string | null;
+  /** UTC timestamp. null for absence records */
+  expectedEndTime?: string | null;
+  /** UTC timestamp. null for absence records */
+  endTime?: string | null;
   /** Integer >= 0 */
   workedMinutes: number;
   requiredMinutes: number;

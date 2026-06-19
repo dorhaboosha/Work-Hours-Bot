@@ -81,6 +81,22 @@ export const DAILY_RECORD_TYPE_LABELS: Record<DailyRecordType, string> = {
   ELECTION: "Election day",
 };
 
+// --- Edit-day types ---
+
+/** The state of a date when the user runs /edit dd-mm */
+export type EditRecordState =
+  | "OPEN_WORK_RECORD"
+  | "NO_RECORD"
+  | "CLOSED_WORK_RECORD"
+  | "ABSENCE_RECORD";
+
+/** The action the user can take when editing a specific date */
+export type EditAction =
+  | "SET_END_HOUR"
+  | "SET_START_AND_END_HOURS"
+  | "MARK_ABSENCE"
+  | "CANCEL";
+
 // --- DailyRecord ---
 
 export interface DailyRecord {
