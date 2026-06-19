@@ -51,6 +51,36 @@ export interface UserSettings {
   updatedAt: string;
 }
 
+// --- Daily record types ---
+
+export type DailyRecordType =
+  | "WORK"
+  | "SICK"
+  | "VACATION"
+  | "HOLIDAY"
+  | "HOLIDAY_EVE"
+  | "UNPAID_ABSENCE"
+  | "ELECTION";
+
+/** All record types that represent absences or paid days off (i.e. not WORK) */
+export type AbsenceRecordType =
+  | "SICK"
+  | "VACATION"
+  | "HOLIDAY"
+  | "HOLIDAY_EVE"
+  | "UNPAID_ABSENCE"
+  | "ELECTION";
+
+export const DAILY_RECORD_TYPE_LABELS: Record<DailyRecordType, string> = {
+  WORK: "Work",
+  SICK: "Sick day",
+  VACATION: "Vacation day",
+  HOLIDAY: "Holiday",
+  HOLIDAY_EVE: "Holiday eve",
+  UNPAID_ABSENCE: "Unpaid absence",
+  ELECTION: "Election day",
+};
+
 // --- DailyRecord ---
 
 export interface DailyRecord {
@@ -58,13 +88,14 @@ export interface DailyRecord {
   telegramId: TelegramId;
   /** Local work date in user's timezone. Format: YYYY-MM-DD */
   workDate: string;
-  /** UTC timestamp */
-  startTime: string;
-  /** UTC timestamp */
-  expectedEndTime: string;
-  /** UTC timestamp. null while the workday is active */
+  recordType: DailyRecordType;
+  /** UTC timestamp. null for absence records */
+  startTime?: string | null;
+  /** UTC timestamp. null for absence records */
+  expectedEndTime?: string | null;
+  /** UTC timestamp. null while a WORK record is active, or for absence records */
   endTime?: string | null;
-  /** Integer >= 0. null until the workday is ended */
+  /** Integer >= 0. null only while a WORK record is active */
   workedMinutes?: number | null;
   /** ISO datetime */
   createdAt: string;
