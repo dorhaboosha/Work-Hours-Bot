@@ -172,9 +172,10 @@ export async function endWorkday(
   if (isPreviousDay) {
     // Previous-day branch: manualEndTime is mandatory
     if (!manualEndTime) {
+      // TODO(task 5.2): remove /end HH:mm — replace this branch with PREVIOUS_RECORD_STILL_OPEN
       throw new AppError(
-        "MANUAL_END_TIME_REQUIRED",
-        `Your open workday is from ${openDateStr}. Provide an end time with /end HH:mm.`
+        "CONFLICT",
+        `Your open workday is from ${openDateStr}. Use /edit ${openDateStr} to close it.`
       );
     }
     // Apply the given HH:mm to the record's original workDate in the user's timezone

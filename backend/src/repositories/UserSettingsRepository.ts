@@ -1,6 +1,13 @@
 import { prisma } from "@/config/PrismaClient";
 import type { UserSettings } from "@/generated/prisma/client";
-import type { SetupSettingsInput } from "@/validators/SettingsSchemas";
+
+/** Fields accepted by upsertUserSettings. language is added in task 3.1 after the Prisma migration. */
+export interface UpsertUserSettingsData {
+  telegramId: string;
+  dailyRequiredMinutes: number;
+  timezone: string;
+  workdays: number[];
+}
 
 export async function findUserSettingsByTelegramId(
   telegramId: string
@@ -9,7 +16,7 @@ export async function findUserSettingsByTelegramId(
 }
 
 export async function upsertUserSettings(
-  input: SetupSettingsInput
+  input: UpsertUserSettingsData
 ): Promise<UserSettings> {
   const { telegramId, dailyRequiredMinutes, timezone, workdays } = input;
 

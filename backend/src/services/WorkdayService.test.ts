@@ -427,7 +427,7 @@ describe("WorkdayService", async () => {
       );
     });
 
-    it("throws MANUAL_END_TIME_REQUIRED when previous-day record has no manualEndTime", async () => {
+    it("throws CONFLICT when previous-day record has no manualEndTime (TODO task 5.2: becomes PREVIOUS_RECORD_STILL_OPEN)", async () => {
       mockFindOpenRecord.mock.mockImplementationOnce(
         async () => makePrevDayOpenRecord()
       );
@@ -437,7 +437,7 @@ describe("WorkdayService", async () => {
         (err: unknown) => {
           assert.equal(
             (err as { code: string }).code,
-            "MANUAL_END_TIME_REQUIRED"
+            "CONFLICT"
           );
           return true;
         }
