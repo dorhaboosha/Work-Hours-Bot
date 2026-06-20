@@ -2,7 +2,7 @@ import type { NextFunction, Request, Response } from "express";
 import { setupSettings, getSettingsOrThrow } from "@/services/SettingsService";
 import { success } from "@/utils/ApiResponse";
 import type { SetupSettingsInput } from "@/validators/SettingsSchemas";
-import type { Weekday } from "@shared/types/CoreTypes";
+import type { Weekday, LanguageCode } from "@shared/types/CoreTypes";
 
 export async function setup(
   req: Request,
@@ -16,8 +16,9 @@ export async function setup(
       dailyHoursOrMinutes: input.dailyRequiredMinutes,
       timezone: input.timezone,
       workdays: input.workdays as Weekday[],
+      language: input.language as LanguageCode,
     });
-    res.status(200).json(success(settings));
+    res.status(201).json(success(settings));
   } catch (err) {
     next(err);
   }

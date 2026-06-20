@@ -33,6 +33,7 @@ describe("SettingsService", async () => {
   let mockUpsert: ReturnType<typeof mock.fn<any>>;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let mockFind: ReturnType<typeof mock.fn<any>>;
+  let baseSetupInput: { timezone: string; workdays: number[]; language: "en" | "he" };
 
   before(() => {
     mockUpsert = mock.fn(async (input: Record<string, unknown>) => ({
@@ -41,6 +42,7 @@ describe("SettingsService", async () => {
       dailyRequiredMinutes: input["dailyRequiredMinutes"],
       timezone: input["timezone"],
       workdays: input["workdays"],
+      language: input["language"] ?? "en",
       createdAt: new Date(),
       updatedAt: new Date(),
     }));
@@ -68,6 +70,7 @@ describe("SettingsService", async () => {
     getSettingsOrThrow = svc.getSettingsOrThrow;
     DEFAULT_TIMEZONE = svc.DEFAULT_TIMEZONE;
     DEFAULT_WORKDAYS = svc.DEFAULT_WORKDAYS;
+    baseSetupInput = { timezone: DEFAULT_TIMEZONE, workdays: [0, 1, 2, 3, 4], language: "en" };
   });
 
   afterEach(() => {
@@ -75,112 +78,112 @@ describe("SettingsService", async () => {
     mockFind?.mock.resetCalls();
   });
 
+
   // ── setupSettings – decimal conversion ──────────────────────────────────────
 
   describe("setupSettings – decimal conversion", () => {
     it("converts 8.8 decimal hours to 528 minutes", async () => {
-      await setupSettings({ telegramId: "1", dailyHoursOrMinutes: 8.8 });
+      await setupSettings({ telegramId: "1", dailyHoursOrMinutes: 8.8, ...baseSetupInput });
 
       assert.equal(mockUpsert.mock.calls[0].arguments[0].dailyRequiredMinutes, 528);
     });
 
     it("converts 7.5 decimal hours to 450 minutes", async () => {
-      await setupSettings({ telegramId: "2", dailyHoursOrMinutes: 7.5 });
+      await setupSettings({ telegramId: "2", dailyHoursOrMinutes: 7.5, ...baseSetupInput });
 
       assert.equal(mockUpsert.mock.calls[0].arguments[0].dailyRequiredMinutes, 450);
     });
 
     it("treats values >= 60 as already-converted minutes and rounds", async () => {
-      await setupSettings({ telegramId: "3", dailyHoursOrMinutes: 527.6 });
+      await setupSettings({ telegramId: "3", dailyHoursOrMinutes: 527.6, ...baseSetupInput });
 
       assert.equal(mockUpsert.mock.calls[0].arguments[0].dailyRequiredMinutes, 528);
     });
 
     it("passes an exact integer minute count unchanged", async () => {
-      await setupSettings({ telegramId: "4", dailyHoursOrMinutes: 480 });
+      await setupSettings({ telegramId: "4", dailyHoursOrMinutes: 480, ...baseSetupInput });
 
       assert.equal(mockUpsert.mock.calls[0].arguments[0].dailyRequiredMinutes, 480);
     });
   });
 
-  // ── setupSettings – defaults ─────────────────────────────────────────────────
+  // ── setupSettings – field passthrough ────────────────────────────────────────
 
-  describe("setupSettings – defaults", () => {
-    it("applies DEFAULT_TIMEZONE when timezone is omitted", async () => {
-      await setupSettings({ telegramId: "5", dailyHoursOrMinutes: 480 });
+  describe("setupSettings – field passthrough", () => {
+    it("passes timezone to upsert", async () => {
+      await setupSettings({
+        telegramId: "5",
+        dailyHoursOrMinutes: 480,
+        timezone: "America/New_York",
+        workdays: [1, 2, 3, 4, 5],
+        language: "en",
+      });
 
-      assert.equal(
-        mockUpsert.mock.calls[0].arguments[0].timezone,
-        DEFAULT_TIMEZONE
-      );
+      assert.equal(mockUpsert.mock.calls[0].arguments[0].timezone, "America/New_York");
     });
 
-    it("applies DEFAULT_WORKDAYS when workdays are omitted", async () => {
-      await setupSettings({ telegramId: "6", dailyHoursOrMinutes: 480 });
+    it("passes workdays to upsert", async () => {
+      await setupSettings({
+        telegramId: "6",
+        dailyHoursOrMinutes: 480,
+        timezone: "UTC",
+        workdays: [1, 2, 3, 4, 5],
+        language: "en",
+      });
 
-      assert.deepEqual(
-        mockUpsert.mock.calls[0].arguments[0].workdays,
-        DEFAULT_WORKDAYS
-      );
+      assert.deepEqual(mockUpsert.mock.calls[0].arguments[0].workdays, [1, 2, 3, 4, 5]);
     });
 
-    it("uses the provided timezone over the default", async () => {
+    it("passes language to upsert", async () => {
       await setupSettings({
         telegramId: "7",
         dailyHoursOrMinutes: 480,
-        timezone: "America/New_York",
+        timezone: "UTC",
+        workdays: [0, 1, 2, 3, 4],
+        language: "he",
       });
 
-      assert.equal(
-        mockUpsert.mock.calls[0].arguments[0].timezone,
-        "America/New_York"
-      );
-    });
-
-    it("uses the provided workdays over the default", async () => {
-      await setupSettings({
-        telegramId: "8",
-        dailyHoursOrMinutes: 480,
-        workdays: [1, 2, 3, 4, 5],
-      });
-
-      assert.deepEqual(
-        mockUpsert.mock.calls[0].arguments[0].workdays,
-        [1, 2, 3, 4, 5]
-      );
+      assert.equal(mockUpsert.mock.calls[0].arguments[0].language, "he");
     });
   });
 
-  // ── setupSettings – create / update passthrough ──────────────────────────────
+  // ── setupSettings – first-time-only guard ────────────────────────────────────
 
-  describe("setupSettings – create and update", () => {
-    it("calls upsertUserSettings once with the correct telegramId on create", async () => {
-      await setupSettings({ telegramId: "new-user", dailyHoursOrMinutes: 480 });
+  describe("setupSettings – first-time-only guard", () => {
+    it("calls upsertUserSettings once for a new user", async () => {
+      await setupSettings({ telegramId: "new-user", dailyHoursOrMinutes: 480, ...baseSetupInput });
 
       assert.equal(mockUpsert.mock.calls.length, 1);
-      assert.equal(
-        mockUpsert.mock.calls[0].arguments[0].telegramId,
-        "new-user"
-      );
+      assert.equal(mockUpsert.mock.calls[0].arguments[0].telegramId, "new-user");
     });
 
-    it("calls upsertUserSettings again on update with new values", async () => {
-      await setupSettings({ telegramId: "existing", dailyHoursOrMinutes: 480 });
-      await setupSettings({
-        telegramId: "existing",
-        dailyHoursOrMinutes: 300,
-        timezone: "Europe/London",
-      });
+    it("throws SETUP_ALREADY_COMPLETED when settings already exist", async () => {
+      mockFind.mock.mockImplementationOnce(async () => ({
+        id: "existing-id",
+        telegramId: "returning-user",
+        dailyRequiredMinutes: 480,
+        timezone: "UTC",
+        workdays: [0, 1, 2, 3, 4],
+        language: "en",
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }));
 
-      assert.equal(mockUpsert.mock.calls.length, 2);
-      assert.equal(
-        mockUpsert.mock.calls[1].arguments[0].dailyRequiredMinutes,
-        300
+      await assert.rejects(
+        () =>
+          setupSettings({
+            telegramId: "returning-user",
+            dailyHoursOrMinutes: 480,
+            ...baseSetupInput,
+          }),
+        (err: unknown) => {
+          assert.ok(err instanceof Error);
+          assert.equal((err as unknown as { code: string }).code, "SETUP_ALREADY_COMPLETED");
+          return true;
+        }
       );
-      assert.equal(
-        mockUpsert.mock.calls[1].arguments[0].timezone,
-        "Europe/London"
-      );
+
+      assert.equal(mockUpsert.mock.calls.length, 0);
     });
   });
 

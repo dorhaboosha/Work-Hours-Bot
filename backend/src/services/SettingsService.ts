@@ -5,7 +5,7 @@ import {
 } from "@/repositories/UserSettingsRepository";
 import { AppError } from "@/utils/AppError";
 import { decimalHoursToMinutes } from "@shared/utils/timeUtils";
-import type { Weekday } from "@shared/types/CoreTypes";
+import type { Weekday, LanguageCode } from "@shared/types/CoreTypes";
 
 /** MVP default workdays: Sunday–Thursday */
 export const DEFAULT_WORKDAYS: Weekday[] = [0, 1, 2, 3, 4];
@@ -21,19 +21,27 @@ export interface SetupInput {
    * are treated as decimal hours and converted via decimalHoursToMinutes.
    */
   dailyHoursOrMinutes: number;
-  timezone?: string;
-  workdays?: Weekday[];
+  timezone: string;
+  workdays: Weekday[];
+  language: LanguageCode;
 }
 
+/**
+ * First-time setup only. Throws SETUP_ALREADY_COMPLETED if the user already
+ * has settings — they should use /settings_edit to make changes.
+ */
 export async function setupSettings(
   input: SetupInput
 ): Promise<UserSettings> {
-  const {
-    telegramId,
-    dailyHoursOrMinutes,
-    timezone = DEFAULT_TIMEZONE,
-    workdays = DEFAULT_WORKDAYS,
-  } = input;
+  const { telegramId, dailyHoursOrMinutes, timezone, workdays, language } = input;
+
+  const existing = await findUserSettingsByTelegramId(telegramId);
+  if (existing) {
+    throw new AppError(
+      "SETUP_ALREADY_COMPLETED",
+      "You have already completed setup. Use /settings_edit to update your settings."
+    );
+  }
 
   // Convert decimal hours to minutes when a fractional/small value is supplied.
   // If the value is already a reasonable minute count (>= 60) leave it as-is.
@@ -47,6 +55,7 @@ export async function setupSettings(
     dailyRequiredMinutes,
     timezone,
     workdays,
+    language,
   });
 }
 

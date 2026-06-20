@@ -71,11 +71,13 @@ export async function handleSetup(ctx: Context): Promise<void> {
   }
 
   try {
+    // TODO(task 8.2): replace with guided multi-step /setup flow that collects language.
     const settings = await setupSettings({
       telegramId,
       dailyHoursOrMinutes: rawHours,
       timezone,
       workdays,
+      language: "en",
     });
 
     const dayNames = (settings.workdays as Weekday[])
