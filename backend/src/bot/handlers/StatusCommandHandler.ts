@@ -40,9 +40,9 @@ export async function handleStatus(ctx: Context): Promise<void> {
     ];
 
     if (status.remainingMinutes === 0) {
-      lines.push("", "🎉 You've reached your daily goal! Use /end when you're done.");
+      lines.push("", "🎉 You've reached your daily goal! Use /end when you're done, or /edit dd-mm to fix a past date.");
     } else {
-      lines.push("", "Use /end to close your workday when you're done.");
+      lines.push("", "Use /end to close your workday when you're done, or /edit dd-mm to fix a past date.");
     }
 
     await ctx.reply(lines.join("\n"), { parse_mode: "Markdown" });

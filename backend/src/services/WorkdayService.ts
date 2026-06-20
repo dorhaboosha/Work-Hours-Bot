@@ -125,7 +125,7 @@ export async function getTodayStatus(
 
   throw new AppError(
     "ACTIVE_RECORD_NOT_FOUND",
-    "No active workday found. Use /start to begin your day."
+    "No active workday found. Use /start to begin your day or /edit dd-mm to log a past date."
   );
 }
 

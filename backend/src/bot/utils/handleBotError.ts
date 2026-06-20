@@ -25,7 +25,7 @@ function errorMessage(err: AppError): string {
     case "ACTIVE_RECORD_NOT_FOUND":
       return (
         "⚠️ *No active workday found.*\n\n" +
-        "Use `/start` to begin your day, then `/status` to track your progress."
+        "Use `/start` to begin your day, or `/edit dd-mm` to log or fix a past date."
       );
 
     case "DAILY_RECORD_ALREADY_CLOSED":
@@ -39,7 +39,7 @@ function errorMessage(err: AppError): string {
       return (
         `⚠️ *You have an unfinished workday.*\n\n` +
         `${err.message}\n\n` +
-        "_Close it first, then you can start a new day or view summaries._"
+        "_Use `/edit dd-mm` to fix it, then you can start a new day or view summaries._"
       );
 
     // ── Input validation ─────────────────────────────────────────────────────
