@@ -20,16 +20,27 @@ model UserSettings {
   @@map("user_settings")
 }
 
+enum DailyRecordType {
+  WORK
+  SICK
+  VACATION
+  HOLIDAY
+  HOLIDAY_EVE
+  UNPAID_ABSENCE
+  ELECTION
+}
+
 model DailyRecord {
-  id              String    @id @default(uuid())
-  telegramId      String    @map("telegram_id")
-  workDate        DateTime  @map("work_date") @db.Date
-  startTime       DateTime  @map("start_time")
-  expectedEndTime DateTime  @map("expected_end_time")
-  endTime         DateTime? @map("end_time")
-  workedMinutes   Int?      @map("worked_minutes")
-  createdAt       DateTime  @default(now()) @map("created_at")
-  updatedAt       DateTime  @updatedAt @map("updated_at")
+  id              String          @id @default(uuid())
+  telegramId      String          @map("telegram_id")
+  workDate        DateTime        @map("work_date") @db.Date
+  recordType      DailyRecordType @default(WORK) @map("record_type")
+  startTime       DateTime?       @map("start_time")
+  expectedEndTime DateTime?       @map("expected_end_time")
+  endTime         DateTime?       @map("end_time")
+  workedMinutes   Int?            @map("worked_minutes")
+  createdAt       DateTime        @default(now()) @map("created_at")
+  updatedAt       DateTime        @updatedAt @map("updated_at")
 
   @@unique([telegramId, workDate])
   @@index([telegramId])
