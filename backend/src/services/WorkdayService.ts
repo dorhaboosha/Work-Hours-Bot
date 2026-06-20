@@ -42,15 +42,15 @@ export async function startWorkday(telegramId: string): Promise<DailyRecord> {
   const todayStr = getLocalDate(settings.timezone);
   const todayDate = localDateStringToUtcMidnight(todayStr);
 
-  // Check for any open (unfinished) record
+  // Check for any open (unfinished) WORK record
   const openRecord = await findOpenRecord(telegramId);
   if (openRecord !== null) {
     const openDateStr = utcToLocalDate(openRecord.workDate, settings.timezone);
     if (openDateStr !== todayStr) {
-      // Open record is from a previous local date — user must close it first
+      // Open record is from a previous local date — user must fix it via /edit dd-mm
       throw new AppError(
         "PREVIOUS_RECORD_STILL_OPEN",
-        `You have an unfinished workday from ${openDateStr}. Close it with /end HH:mm before starting a new one.`
+        `You have an unfinished workday from ${openDateStr}. Use /edit ${openDateStr} to close it before starting a new one.`
       );
     }
     // Open record is for today — already started
@@ -75,7 +75,7 @@ export async function startWorkday(telegramId: string): Promise<DailyRecord> {
     settings.dailyRequiredMinutes
   );
 
-  return createDailyRecord({ telegramId, workDate: todayDate, startTime, expectedEndTime });
+  return createDailyRecord({ telegramId, workDate: todayDate, recordType: "WORK", startTime, expectedEndTime });
 }
 
 /**
@@ -98,7 +98,7 @@ export async function getTodayStatus(
     if (openDateStr !== todayStr) {
       throw new AppError(
         "PREVIOUS_RECORD_STILL_OPEN",
-        `You have an unfinished workday from ${openDateStr}. Close it with /end HH:mm.`
+        `You have an unfinished workday from ${openDateStr}. Use /edit ${openDateStr} to close it.`
       );
     }
 

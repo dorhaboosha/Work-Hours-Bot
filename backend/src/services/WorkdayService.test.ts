@@ -193,6 +193,13 @@ describe("WorkdayService", async () => {
       assert.equal(diffMin, SETTINGS.dailyRequiredMinutes);
     });
 
+    it("passes recordType = WORK to createDailyRecord", async () => {
+      await startWorkday("user1");
+
+      const arg = mockCreateDailyRecord.mock.calls[0].arguments[0];
+      assert.equal(arg.recordType, "WORK");
+    });
+
     it("does not create a record when one already exists for today (open)", async () => {
       mockFindOpenRecord.mock.mockImplementationOnce(
         async () => makeTodayOpenRecord()
