@@ -33,6 +33,41 @@ export function utcToLocalTime(utc: Date | string, timezone: string): string {
 }
 
 /**
+ * Resolves a `dd-mm` string to a `YYYY-MM-DD` date using the current year in
+ * the user's timezone. Used by the `/edit dd-mm` flow.
+ *
+ * Example:
+ *   resolveDdMmToDate("20-06", "Asia/Jerusalem")  → "2026-06-20"
+ *
+ * Does not validate that `dd-mm` is a real calendar date — callers rely on
+ * Zod schema validation (EditDayDateParamSchema) to reject invalid inputs.
+ */
+export function resolveDdMmToDate(ddMm: string, timezone: string): string {
+  const year = DateTime.now().setZone(timezone).year;
+  const [dd, mm] = ddMm.split("-").map(Number);
+  return DateTime.fromObject({ year, month: mm, day: dd }, { zone: timezone }).toFormat(
+    "yyyy-MM-dd"
+  );
+}
+
+/**
+ * Combines a local workDate (YYYY-MM-DD) and a time (HH:mm) in the given
+ * timezone and returns a UTC Date. Used by the edit-day flow to store
+ * start/end times anchored to the edited date, never the current date.
+ *
+ * Example:
+ *   localTimeToUtc("2026-06-12", "17:30", "Asia/Jerusalem")
+ *   → 2026-06-12T14:30:00.000Z  (UTC, accounting for UTC+3)
+ */
+export function localTimeToUtc(workDate: string, time: string, timezone: string): Date {
+  const [hours, minutes] = time.split(":").map(Number);
+  return DateTime.fromISO(workDate, { zone: timezone })
+    .set({ hour: hours, minute: minutes, second: 0, millisecond: 0 })
+    .toUTC()
+    .toJSDate();
+}
+
+/**
  * Combines a local workDate (YYYY-MM-DD) and a manualEndTime (HH:mm) in the
  * given timezone and returns a UTC Date.
  *
