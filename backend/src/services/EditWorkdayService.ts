@@ -1,11 +1,12 @@
 import { DateTime } from "luxon";
-import { findRecordByDate } from "@/repositories/DailyRecordRepository";
+import { findRecordByDate, updateDailyRecord } from "@/repositories/DailyRecordRepository";
 import { getSettingsOrThrow } from "@/services/SettingsService";
-import { resolveDdMmToDate } from "@/utils/DateUtils";
+import { resolveDdMmToDate, localTimeToUtc } from "@/utils/DateUtils";
 import { AppError } from "@/utils/AppError";
+import { calcWorkedMinutes, calcBalance } from "@/services/TimeCalculationService";
 import type { DailyRecord as PrismaRecord } from "@/generated/prisma/client";
 import type { DailyRecord } from "@shared/types/CoreTypes";
-import type { EditDayOptions } from "@shared/types/ViewTypes";
+import type { EditDayOptions, EditWorkdayResult } from "@shared/types/ViewTypes";
 import type { EditRecordState, EditAction, DailyRecordType } from "@shared/types/CoreTypes";
 
 /** Converts a YYYY-MM-DD string to a UTC midnight Date for Prisma date column lookups. */
@@ -87,4 +88,60 @@ export function assertActionAllowed(
       `Action "${action}" is not allowed when the date is in state "${state}".`
     );
   }
+}
+
+/** Builds an EditWorkdayResult from a saved Prisma record and derived fields. */
+function toEditWorkdayResult(
+  prisma: PrismaRecord,
+  workDateStr: string,
+  ddMm: string,
+  requiredMinutes: number
+): EditWorkdayResult {
+  const workedMinutes = prisma.workedMinutes ?? 0;
+  return {
+    id: prisma.id,
+    telegramId: prisma.telegramId,
+    workDate: workDateStr,
+    displayDate: ddMm,
+    recordType: prisma.recordType as DailyRecordType,
+    startTime: prisma.startTime?.toISOString() ?? null,
+    expectedEndTime: prisma.expectedEndTime?.toISOString() ?? null,
+    endTime: prisma.endTime?.toISOString() ?? null,
+    workedMinutes,
+    requiredMinutes,
+    balanceMinutes: calcBalance(workedMinutes, requiredMinutes),
+  };
+}
+
+// ── Action: SET_END_HOUR ──────────────────────────────────────────────────────
+
+/**
+ * Closes an open WORK record by applying the given HH:mm end time to the
+ * edited date in the user's timezone. The existing startTime is preserved.
+ *
+ * Throws CONFLICT when the date is not in OPEN_WORK_RECORD state.
+ */
+export async function setEndHour(
+  telegramId: string,
+  ddMm: string,
+  endTimeHhMm: string
+): Promise<EditWorkdayResult> {
+  const settings = await getSettingsOrThrow(telegramId);
+  const workDateStr = resolveDdMmToDate(ddMm, settings.timezone);
+  const workDate = localDateToUtcMidnight(workDateStr);
+
+  const record = await findRecordByDate(telegramId, workDate);
+  assertActionAllowed(resolveState(record), "SET_END_HOUR");
+
+  // record is guaranteed non-null and OPEN_WORK_RECORD at this point
+  if (!record!.startTime) {
+    throw new AppError("CONFLICT", "Open record is missing start time.");
+  }
+
+  const endTimeUtc = localTimeToUtc(workDateStr, endTimeHhMm, settings.timezone);
+  const workedMinutes = calcWorkedMinutes(record!.startTime, endTimeUtc);
+
+  const updated = await updateDailyRecord(record!.id, { endTime: endTimeUtc, workedMinutes });
+
+  return toEditWorkdayResult(updated, workDateStr, ddMm, settings.dailyRequiredMinutes);
 }
