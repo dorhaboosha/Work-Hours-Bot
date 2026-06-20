@@ -102,7 +102,11 @@ export async function getTodayStatus(
       );
     }
 
-    // Active record is for today — compute live metrics
+    // Active record is for today — compute live metrics.
+    // Open WORK records always have startTime/expectedEndTime; guard defensively.
+    if (!openRecord.startTime || !openRecord.expectedEndTime) {
+      throw new AppError("ACTIVE_RECORD_NOT_FOUND", "Open record is missing time data.");
+    }
     const workedMinutesSoFar = calcWorkedMinutesSoFar(openRecord.startTime);
     const remainingMinutes = calcRemainingMinutes(
       workedMinutesSoFar,
@@ -185,11 +189,18 @@ export async function endWorkday(
     endTime = new Date();
   }
 
+  // Open WORK records always have startTime; guard defensively.
+  if (!openRecord.startTime) {
+    throw new AppError("ACTIVE_RECORD_NOT_FOUND", "Open record is missing start time.");
+  }
   const workedMinutes = calcWorkedMinutes(openRecord.startTime, endTime);
   const balanceMinutes = calcBalance(workedMinutes, settings.dailyRequiredMinutes);
 
   const updated = await updateDailyRecord(openRecord.id, { endTime, workedMinutes });
 
+  if (!updated.startTime || !updated.expectedEndTime) {
+    throw new AppError("ACTIVE_RECORD_NOT_FOUND", "Updated record is missing time data.");
+  }
   return {
     id: updated.id,
     telegramId: updated.telegramId,

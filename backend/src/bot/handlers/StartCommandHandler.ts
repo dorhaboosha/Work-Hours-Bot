@@ -14,8 +14,8 @@ export async function handleStart(ctx: Context): Promise<void> {
       getSettingsOrThrow(telegramId),
     ]);
 
-    const startStr = formatTime(record.startTime, settings.timezone);
-    const endStr = formatTime(record.expectedEndTime, settings.timezone);
+    const startStr = formatTime(record.startTime!, settings.timezone);
+    const endStr = formatTime(record.expectedEndTime!, settings.timezone);
     const durationStr = formatMinutesAsDuration(settings.dailyRequiredMinutes);
 
     await ctx.reply(

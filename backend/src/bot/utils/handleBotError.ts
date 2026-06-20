@@ -42,13 +42,6 @@ function errorMessage(err: AppError): string {
         "_Close it first, then you can start a new day or view summaries._"
       );
 
-    case "MANUAL_END_TIME_REQUIRED":
-      return (
-        `⏰ *An end time is required for this workday.*\n\n` +
-        `${err.message}\n\n` +
-        "_Example: `/end 17:30`_"
-      );
-
     // ── Input validation ─────────────────────────────────────────────────────
     case "VALIDATION_ERROR":
       return `❌ *Invalid input.*\n\n${err.message}`;

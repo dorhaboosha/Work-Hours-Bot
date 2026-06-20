@@ -225,6 +225,7 @@ function enrichWithOpenDay(
   const openDateStr = utcToLocalDate(openRecord.workDate, timezone);
   if (!workdayDates.includes(openDateStr)) return records;
 
+  if (!openRecord.startTime) return records;
   const liveMinutes = calcWorkedMinutesSoFar(openRecord.startTime);
   return records.map((r) =>
     r.id === openRecord.id ? { ...r, workedMinutes: liveMinutes } : r
