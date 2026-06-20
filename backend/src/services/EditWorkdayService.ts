@@ -1,9 +1,9 @@
 import { DateTime } from "luxon";
-import { findRecordByDate, updateDailyRecord } from "@/repositories/DailyRecordRepository";
+import { findRecordByDate, updateDailyRecord, upsertRecordByDate } from "@/repositories/DailyRecordRepository";
 import { getSettingsOrThrow } from "@/services/SettingsService";
 import { resolveDdMmToDate, localTimeToUtc } from "@/utils/DateUtils";
 import { AppError } from "@/utils/AppError";
-import { calcWorkedMinutes, calcBalance } from "@/services/TimeCalculationService";
+import { calcExpectedEndTime, calcWorkedMinutes, calcBalance } from "@/services/TimeCalculationService";
 import type { DailyRecord as PrismaRecord } from "@/generated/prisma/client";
 import type { DailyRecord } from "@shared/types/CoreTypes";
 import type { EditDayOptions, EditWorkdayResult } from "@shared/types/ViewTypes";
@@ -144,4 +144,44 @@ export async function setEndHour(
   const updated = await updateDailyRecord(record!.id, { endTime: endTimeUtc, workedMinutes });
 
   return toEditWorkdayResult(updated, workDateStr, ddMm, settings.dailyRequiredMinutes);
+}
+
+// ── Action: SET_START_AND_END_HOURS ───────────────────────────────────────────
+
+/**
+ * Creates or replaces the record for the edited date as a closed WORK record
+ * with the given start and end times (applied to the edited date, not today).
+ * `expectedEndTime` is calculated as startTime + dailyRequiredMinutes.
+ *
+ * Allowed in all states (NO_RECORD, OPEN_WORK_RECORD, CLOSED_WORK_RECORD, ABSENCE_RECORD).
+ */
+export async function setStartAndEndHours(
+  telegramId: string,
+  ddMm: string,
+  startTimeHhMm: string,
+  endTimeHhMm: string
+): Promise<EditWorkdayResult> {
+  const settings = await getSettingsOrThrow(telegramId);
+  const workDateStr = resolveDdMmToDate(ddMm, settings.timezone);
+  const workDate = localDateToUtcMidnight(workDateStr);
+
+  const record = await findRecordByDate(telegramId, workDate);
+  assertActionAllowed(resolveState(record), "SET_START_AND_END_HOURS");
+
+  const startTimeUtc = localTimeToUtc(workDateStr, startTimeHhMm, settings.timezone);
+  const endTimeUtc   = localTimeToUtc(workDateStr, endTimeHhMm,   settings.timezone);
+  const expectedEndTimeUtc = calcExpectedEndTime(startTimeUtc, settings.dailyRequiredMinutes);
+  const workedMinutes = calcWorkedMinutes(startTimeUtc, endTimeUtc);
+
+  const saved = await upsertRecordByDate({
+    telegramId,
+    workDate,
+    recordType: "WORK",
+    startTime: startTimeUtc,
+    expectedEndTime: expectedEndTimeUtc,
+    endTime: endTimeUtc,
+    workedMinutes,
+  });
+
+  return toEditWorkdayResult(saved, workDateStr, ddMm, settings.dailyRequiredMinutes);
 }
