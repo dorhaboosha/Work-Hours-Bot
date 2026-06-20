@@ -200,7 +200,7 @@ async function assertNoPreviousOpenRecord(
   if (openDateStr !== todayStr) {
     throw new AppError(
       "PREVIOUS_RECORD_STILL_OPEN",
-      `You have an unfinished workday from ${openDateStr}. Close it with /end HH:mm before viewing summaries.`
+      `You have an unfinished workday from ${openDateStr}. Use /edit ${openDateStr} to close it before viewing summaries.`
     );
   }
 }
@@ -235,17 +235,14 @@ function enrichWithOpenDay(
 // ── Public service functions ──────────────────────────────────────────────────
 
 /**
- * Returns the week summary for a user.
+ * Returns the week summary for the current week in the user's timezone.
  * Throws PREVIOUS_RECORD_STILL_OPEN if a prior-day record is still open.
  */
-export async function getWeekSummary(
-  telegramId: string,
-  referenceDate?: string
-): Promise<WorkSummary> {
+export async function getWeekSummary(telegramId: string): Promise<WorkSummary> {
   const settings = await getSettingsOrThrow(telegramId);
   await assertNoPreviousOpenRecord(telegramId, settings.timezone);
   const workdays = settings.workdays as Weekday[];
-  const window = getWeekWindow(workdays, settings.timezone, referenceDate);
+  const window = getWeekWindow(workdays, settings.timezone);
 
   const rawRecords =
     window.workdayDates.length > 0
@@ -282,17 +279,14 @@ export async function getWeekSummary(
 }
 
 /**
- * Returns the month summary for a user.
+ * Returns the month summary for the current month in the user's timezone.
  * Throws PREVIOUS_RECORD_STILL_OPEN if a prior-day record is still open.
  */
-export async function getMonthSummary(
-  telegramId: string,
-  referenceMonth?: string
-): Promise<WorkSummary> {
+export async function getMonthSummary(telegramId: string): Promise<WorkSummary> {
   const settings = await getSettingsOrThrow(telegramId);
   await assertNoPreviousOpenRecord(telegramId, settings.timezone);
   const workdays = settings.workdays as Weekday[];
-  const window = getMonthWindow(workdays, settings.timezone, referenceMonth);
+  const window = getMonthWindow(workdays, settings.timezone);
 
   const rawRecords =
     window.workdayDates.length > 0
