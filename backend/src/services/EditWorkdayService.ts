@@ -7,7 +7,8 @@ import { calcExpectedEndTime, calcWorkedMinutes, calcBalance } from "@/services/
 import type { DailyRecord as PrismaRecord } from "@/generated/prisma/client";
 import type { DailyRecord } from "@shared/types/CoreTypes";
 import type { EditDayOptions, EditWorkdayResult } from "@shared/types/ViewTypes";
-import type { EditRecordState, EditAction, DailyRecordType } from "@shared/types/CoreTypes";
+import type { EditRecordState, EditAction, DailyRecordType, AbsenceRecordType } from "@shared/types/CoreTypes";
+import { calculateCreditedMinutes } from "@shared/utils/recordTypeUtils";
 
 /** Converts a YYYY-MM-DD string to a UTC midnight Date for Prisma date column lookups. */
 function localDateToUtcMidnight(dateStr: string): Date {
@@ -180,6 +181,45 @@ export async function setStartAndEndHours(
     startTime: startTimeUtc,
     expectedEndTime: expectedEndTimeUtc,
     endTime: endTimeUtc,
+    workedMinutes,
+  });
+
+  return toEditWorkdayResult(saved, workDateStr, ddMm, settings.dailyRequiredMinutes);
+}
+
+// ── Action: MARK_ABSENCE ──────────────────────────────────────────────────────
+
+/**
+ * Creates or replaces the record for the edited date as an absence record.
+ * All timestamps (startTime, expectedEndTime, endTime) are set to null.
+ * workedMinutes is set by the absence credit rule:
+ *   - SICK / VACATION / HOLIDAY / ELECTION → dailyRequiredMinutes
+ *   - HOLIDAY_EVE                           → floor(dailyRequiredMinutes / 2)
+ *   - UNPAID_ABSENCE                        → 0
+ *
+ * Allowed in all states (NO_RECORD, OPEN_WORK_RECORD, CLOSED_WORK_RECORD, ABSENCE_RECORD).
+ */
+export async function markAbsence(
+  telegramId: string,
+  ddMm: string,
+  absenceType: AbsenceRecordType
+): Promise<EditWorkdayResult> {
+  const settings = await getSettingsOrThrow(telegramId);
+  const workDateStr = resolveDdMmToDate(ddMm, settings.timezone);
+  const workDate = localDateToUtcMidnight(workDateStr);
+
+  const record = await findRecordByDate(telegramId, workDate);
+  assertActionAllowed(resolveState(record), "MARK_ABSENCE");
+
+  const workedMinutes = calculateCreditedMinutes(absenceType, settings.dailyRequiredMinutes);
+
+  const saved = await upsertRecordByDate({
+    telegramId,
+    workDate,
+    recordType: absenceType,
+    startTime: null,
+    expectedEndTime: null,
+    endTime: null,
     workedMinutes,
   });
 
