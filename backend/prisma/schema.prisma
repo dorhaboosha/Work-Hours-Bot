@@ -45,6 +45,7 @@ model DailyRecord {
   @@unique([telegramId, workDate])
   @@index([telegramId])
   @@index([telegramId, workDate])
+  @@index([telegramId, recordType])
   @@index([telegramId, endTime])
   @@map("daily_records")
 }
