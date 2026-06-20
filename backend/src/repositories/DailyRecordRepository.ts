@@ -31,16 +31,27 @@ export interface UpsertDailyRecordInput {
 }
 
 /**
- * Returns the user's open record (endTime IS NULL), regardless of workDate.
- * Used to enforce the single open record invariant.
+ * Returns the user's open WORK record (recordType=WORK, endTime IS NULL).
+ * Absence records always have endTime=null too, so this filter is required
+ * to enforce the single open WORK record invariant correctly.
+ */
+export async function findOpenWorkRecord(
+  telegramId: string
+): Promise<DailyRecord | null> {
+  return prisma.dailyRecord.findFirst({
+    where: { telegramId, recordType: "WORK", endTime: null },
+    orderBy: { workDate: "desc" },
+  });
+}
+
+/**
+ * @deprecated Use findOpenWorkRecord instead — absence records also have
+ * endTime=null and would be returned by this query.
  */
 export async function findOpenRecord(
   telegramId: string
 ): Promise<DailyRecord | null> {
-  return prisma.dailyRecord.findFirst({
-    where: { telegramId, endTime: null },
-    orderBy: { workDate: "desc" },
-  });
+  return findOpenWorkRecord(telegramId);
 }
 
 /** Looks up a record by its exact workDate (as a UTC midnight Date). */
