@@ -42,8 +42,8 @@ export async function end(
   next: NextFunction
 ): Promise<void> {
   try {
-    const { telegramId, manualEndTime } = req.body as EndWorkdayInput;
-    const result = await endWorkday(telegramId, manualEndTime);
+    const { telegramId } = req.body as EndWorkdayInput;
+    const result = await endWorkday(telegramId);
     res.status(200).json(success(result));
   } catch (err) {
     next(err);

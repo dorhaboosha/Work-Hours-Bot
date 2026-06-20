@@ -14,7 +14,7 @@ import {
   calcRemainingMinutes,
   calcBalance,
 } from "@/services/TimeCalculationService";
-import { getLocalDate, utcToLocalDate, manualEndTimeToUtc } from "@/utils/DateUtils";
+import { getLocalDate, utcToLocalDate } from "@/utils/DateUtils";
 import { AppError } from "@/utils/AppError";
 import { DateTime } from "luxon";
 import type { WorkdayStatus, EndWorkdayResult } from "@shared/types/ViewTypes";
@@ -130,24 +130,17 @@ export async function getTodayStatus(
 }
 
 /**
- * Closes the user's active workday.
- *
- * Two branches:
- * - Today's record  → close with the current UTC time (no manualEndTime needed).
- * - Previous-day record → manualEndTime (HH:mm) is required; it is applied to
- *   the record's original workDate in the user's timezone and converted to UTC.
- *   The current date/time is NEVER used for previous-day records.
+ * Closes today's active WORK record using the current time.
+ * V1.1 does not support `/end HH:mm`; previous-day open records must be
+ * handled via the `/edit dd-mm` flow.
  *
  * Throws:
- * - USER_SETTINGS_NOT_FOUND      – no settings.
- * - DAILY_RECORD_ALREADY_CLOSED  – today's record exists but is already closed.
- * - ACTIVE_RECORD_NOT_FOUND      – no open record and no closed record for today.
- * - MANUAL_END_TIME_REQUIRED     – open record is from a prior date but no time given.
+ * - USER_SETTINGS_NOT_FOUND       – no settings.
+ * - PREVIOUS_RECORD_STILL_OPEN    – open record exists from a prior local date.
+ * - DAILY_RECORD_ALREADY_CLOSED   – today's record exists but is already closed.
+ * - ACTIVE_RECORD_NOT_FOUND       – no open record and no closed record for today.
  */
-export async function endWorkday(
-  telegramId: string,
-  manualEndTime?: string
-): Promise<EndWorkdayResult> {
+export async function endWorkday(telegramId: string): Promise<EndWorkdayResult> {
   const settings = await getSettingsOrThrow(telegramId);
   const todayStr = getLocalDate(settings.timezone);
   const todayDate = localDateStringToUtcMidnight(todayStr);
@@ -164,35 +157,24 @@ export async function endWorkday(
     }
     throw new AppError(
       "ACTIVE_RECORD_NOT_FOUND",
-      "No active workday to end. Use /start to begin your day."
+      "No active workday to end. Use /start to begin your day or /edit dd-mm to fix a past date."
     );
   }
 
   const openDateStr = utcToLocalDate(openRecord.workDate, settings.timezone);
-  const isPreviousDay = openDateStr !== todayStr;
-
-  let endTime: Date;
-
-  if (isPreviousDay) {
-    // Previous-day branch: manualEndTime is mandatory
-    if (!manualEndTime) {
-      // TODO(task 5.2): remove /end HH:mm — replace this branch with PREVIOUS_RECORD_STILL_OPEN
-      throw new AppError(
-        "CONFLICT",
-        `Your open workday is from ${openDateStr}. Use /edit ${openDateStr} to close it.`
-      );
-    }
-    // Apply the given HH:mm to the record's original workDate in the user's timezone
-    endTime = manualEndTimeToUtc(openDateStr, manualEndTime, settings.timezone);
-  } else {
-    // Today's branch: use the current UTC instant
-    endTime = new Date();
+  if (openDateStr !== todayStr) {
+    // Open record is from a previous date — direct user to /edit dd-mm
+    throw new AppError(
+      "PREVIOUS_RECORD_STILL_OPEN",
+      `You have an unfinished workday from ${openDateStr}. Use /edit ${openDateStr} to close it.`
+    );
   }
 
   // Open WORK records always have startTime; guard defensively.
   if (!openRecord.startTime) {
     throw new AppError("ACTIVE_RECORD_NOT_FOUND", "Open record is missing start time.");
   }
+  const endTime = new Date();
   const workedMinutes = calcWorkedMinutes(openRecord.startTime, endTime);
   const balanceMinutes = calcBalance(workedMinutes, settings.dailyRequiredMinutes);
 
