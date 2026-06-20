@@ -7,6 +7,8 @@ import { getLocalDate, utcToLocalDate } from "@/utils/DateUtils";
 import { calcWorkedMinutesSoFar } from "@/services/TimeCalculationService";
 import { AppError } from "@/utils/AppError";
 import type { WorkSummary } from "@shared/types/ViewTypes";
+import { isAbsenceRecordType } from "@shared/utils/recordTypeUtils";
+import type { DailyRecordType } from "@shared/types/CoreTypes";
 
 // ── Internal types ────────────────────────────────────────────────────────────
 
@@ -148,12 +150,15 @@ interface AggregateResult {
 }
 
 /**
- * Aggregates totals across a list of expected workday dates.
+ * Aggregates totals across a list of expected workday dates, crediting each
+ * absence type correctly:
  *
- * - Closed record present → use its stored `workedMinutes`.
- * - No record for the date  → counts as 0 worked (missing day).
- * - Open record (endTime = null) → caller should pass its `workedMinutes`
- *   pre-filled with the live worked-so-far value (task 7.5 responsibility).
+ * - **WORK record (closed)** → stored `workedMinutes` worked; full `dailyRequiredMinutes` required.
+ * - **WORK record (open)**   → caller pre-fills `workedMinutes` with live value via `enrichWithOpenDay`.
+ * - **Absence record**       → the credited amount (stored in `workedMinutes` by `MARK_ABSENCE`) counts
+ *   as both worked *and* required for that day, keeping the day balance-neutral regardless of type
+ *   (SICK/VACATION/HOLIDAY/ELECTION → full credit; HOLIDAY_EVE → half; UNPAID_ABSENCE → 0).
+ * - **No record**            → 0 worked, full `dailyRequiredMinutes` required (missing day).
  */
 export function aggregateSummary(
   workdayDates: string[],
@@ -168,13 +173,24 @@ export function aggregateSummary(
   }
 
   let workedMinutes = 0;
+  let requiredMinutes = 0;
+
   for (const date of workdayDates) {
     const rec = byDate.get(date);
-    workedMinutes += rec?.workedMinutes ?? 0;
+
+    if (rec && isAbsenceRecordType(rec.recordType as DailyRecordType)) {
+      // Absence: credited amount counts as both worked and required → balance-neutral
+      const credited = rec.workedMinutes ?? 0;
+      workedMinutes += credited;
+      requiredMinutes += credited;
+    } else {
+      // WORK record or missing day: full required applies
+      workedMinutes += rec?.workedMinutes ?? 0;
+      requiredMinutes += dailyRequiredMinutes;
+    }
   }
 
   const workdaysCount = workdayDates.length;
-  const requiredMinutes = workdaysCount * dailyRequiredMinutes;
   const balanceMinutes = workedMinutes - requiredMinutes;
 
   return { workdaysCount, requiredMinutes, workedMinutes, balanceMinutes };
