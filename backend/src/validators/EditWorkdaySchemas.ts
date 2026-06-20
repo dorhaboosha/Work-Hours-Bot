@@ -12,6 +12,14 @@ export const EditDayDateParamSchema = z
     'Date must be in dd-mm format (e.g. "12-06")'
   );
 
+/** Path params schema for GET /workdays/edit/:telegramId/:date */
+export const EditDayParamsSchema = z.object({
+  telegramId: z.string().min(1, "telegramId is required"),
+  date: EditDayDateParamSchema,
+});
+
+export type EditDayParams = z.infer<typeof EditDayParamsSchema>;
+
 /** HH:mm 24-hour format — reused across multiple action schemas */
 const hhmmSchema = z
   .string()
