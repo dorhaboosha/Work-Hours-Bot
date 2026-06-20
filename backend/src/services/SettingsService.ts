@@ -2,7 +2,9 @@ import type { UserSettings } from "@/generated/prisma/client";
 import {
   findUserSettingsByTelegramId,
   upsertUserSettings,
+  updateUserSettings,
 } from "@/repositories/UserSettingsRepository";
+import type { UpdateUserSettingsData } from "@/repositories/UserSettingsRepository";
 import { AppError } from "@/utils/AppError";
 import { decimalHoursToMinutes } from "@shared/utils/timeUtils";
 import type { Weekday, LanguageCode } from "@shared/types/CoreTypes";
@@ -57,6 +59,35 @@ export async function setupSettings(
     workdays,
     language,
   });
+}
+
+export interface UpdateSettingsInput {
+  dailyRequiredMinutes?: number;
+  timezone?: string;
+  workdays?: Weekday[];
+  language?: LanguageCode;
+}
+
+/**
+ * Partial update for /settings_edit. Throws USER_SETTINGS_NOT_FOUND when the
+ * user has no settings yet — they should run /setup first.
+ */
+export async function updateSettings(
+  telegramId: string,
+  input: UpdateSettingsInput
+): Promise<UserSettings> {
+  await getSettingsOrThrow(telegramId);
+
+  const data: UpdateUserSettingsData = {
+    ...(input.dailyRequiredMinutes !== undefined && {
+      dailyRequiredMinutes: input.dailyRequiredMinutes,
+    }),
+    ...(input.timezone !== undefined && { timezone: input.timezone }),
+    ...(input.workdays !== undefined && { workdays: input.workdays }),
+    ...(input.language !== undefined && { language: input.language }),
+  };
+
+  return updateUserSettings(telegramId, data);
 }
 
 /** Returns settings or null — use when absence is not an error. */
