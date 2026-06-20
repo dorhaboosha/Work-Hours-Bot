@@ -1,16 +1,33 @@
 import { prisma } from "@/config/PrismaClient";
-import type { DailyRecord } from "@/generated/prisma/client";
+import type { DailyRecord, DailyRecordType } from "@/generated/prisma/client";
 
 export interface CreateDailyRecordInput {
   telegramId: string;
   workDate: Date;
-  startTime: Date;
-  expectedEndTime: Date;
+  recordType?: DailyRecordType;
+  startTime?: Date | null;
+  expectedEndTime?: Date | null;
+  workedMinutes?: number | null;
 }
 
+/** Flexible update: only supplied fields are written; omitted fields are untouched. */
 export interface UpdateDailyRecordInput {
-  endTime: Date;
-  workedMinutes: number;
+  recordType?: DailyRecordType;
+  startTime?: Date | null;
+  expectedEndTime?: Date | null;
+  endTime?: Date | null;
+  workedMinutes?: number | null;
+}
+
+/** Full upsert payload for create-or-replace on a specific date (edit flow). */
+export interface UpsertDailyRecordInput {
+  telegramId: string;
+  workDate: Date;
+  recordType: DailyRecordType;
+  startTime?: Date | null;
+  expectedEndTime?: Date | null;
+  endTime?: Date | null;
+  workedMinutes?: number | null;
 }
 
 /**
@@ -39,9 +56,16 @@ export async function findRecordByDate(
 export async function createDailyRecord(
   input: CreateDailyRecordInput
 ): Promise<DailyRecord> {
-  const { telegramId, workDate, startTime, expectedEndTime } = input;
+  const { telegramId, workDate, recordType, startTime, expectedEndTime, workedMinutes } = input;
   return prisma.dailyRecord.create({
-    data: { telegramId, workDate, startTime, expectedEndTime },
+    data: {
+      telegramId,
+      workDate,
+      ...(recordType !== undefined && { recordType }),
+      startTime: startTime ?? null,
+      expectedEndTime: expectedEndTime ?? null,
+      ...(workedMinutes !== undefined && { workedMinutes }),
+    },
   });
 }
 
@@ -51,7 +75,32 @@ export async function updateDailyRecord(
 ): Promise<DailyRecord> {
   return prisma.dailyRecord.update({
     where: { id },
-    data: { endTime: input.endTime, workedMinutes: input.workedMinutes },
+    data: input,
+  });
+}
+
+/**
+ * Creates or replaces the record for a specific (telegramId, workDate).
+ * Used by the edit-day flow (SET_START_AND_END_HOURS, MARK_ABSENCE).
+ */
+export async function upsertRecordByDate(
+  input: UpsertDailyRecordInput
+): Promise<DailyRecord> {
+  const { telegramId, workDate, recordType, startTime, expectedEndTime, endTime, workedMinutes } =
+    input;
+
+  const payload = {
+    recordType,
+    startTime: startTime ?? null,
+    expectedEndTime: expectedEndTime ?? null,
+    endTime: endTime ?? null,
+    workedMinutes: workedMinutes ?? null,
+  };
+
+  return prisma.dailyRecord.upsert({
+    where: { telegramId_workDate: { telegramId, workDate } },
+    update: payload,
+    create: { telegramId, workDate, ...payload },
   });
 }
 
