@@ -10,13 +10,13 @@ export async function handleWeek(ctx: Context): Promise<void> {
   const telegramId = ctx.from?.id?.toString();
   if (!telegramId) return;
 
+  // Fetch settings first so lang is resolved before any service call can throw.
   let lang: LanguageCode = "en";
   try {
-    const [summary, settings] = await Promise.all([
-      getWeekSummary(telegramId),
-      getSettingsOrThrow(telegramId),
-    ]);
+    const settings = await getSettingsOrThrow(telegramId);
     lang = settings.language as LanguageCode;
+
+    const summary = await getWeekSummary(telegramId);
 
     const workedStr = formatMinutesAsDuration(summary.workedMinutes);
     const requiredStr = formatMinutesAsDuration(summary.requiredMinutes);

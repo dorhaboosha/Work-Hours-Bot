@@ -10,13 +10,13 @@ export async function handleStart(ctx: Context): Promise<void> {
   const telegramId = ctx.from?.id?.toString();
   if (!telegramId) return;
 
+  // Fetch settings first so lang is resolved before any service call can throw.
   let lang: LanguageCode = "en";
   try {
-    const [record, settings] = await Promise.all([
-      startWorkday(telegramId),
-      getSettingsOrThrow(telegramId),
-    ]);
+    const settings = await getSettingsOrThrow(telegramId);
     lang = settings.language as LanguageCode;
+
+    const record = await startWorkday(telegramId);
 
     const startStr = formatTime(record.startTime!, settings.timezone);
     const endStr = formatTime(record.expectedEndTime!, settings.timezone);

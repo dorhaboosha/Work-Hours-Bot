@@ -98,6 +98,17 @@ export async function getSettings(
 }
 
 /**
+ * Resolves the user's configured language without throwing.
+ * Returns "en" when settings do not exist or the query fails.
+ * Use this when you need the language early (e.g. for error formatting)
+ * without requiring settings to exist.
+ */
+export async function resolveUserLang(telegramId: string): Promise<LanguageCode> {
+  const settings = await findUserSettingsByTelegramId(telegramId).catch(() => null);
+  return (settings?.language as LanguageCode) ?? "en";
+}
+
+/**
  * Returns settings or throws USER_SETTINGS_NOT_FOUND.
  * Use this in any flow that requires settings to exist before proceeding.
  */

@@ -10,13 +10,13 @@ export async function handleStatus(ctx: Context): Promise<void> {
   const telegramId = ctx.from?.id?.toString();
   if (!telegramId) return;
 
+  // Fetch settings first so lang is resolved before any service call can throw.
   let lang: LanguageCode = "en";
   try {
-    const [status, settings] = await Promise.all([
-      getTodayStatus(telegramId),
-      getSettingsOrThrow(telegramId),
-    ]);
+    const settings = await getSettingsOrThrow(telegramId);
     lang = settings.language as LanguageCode;
+
+    const status = await getTodayStatus(telegramId);
 
     const startStr = formatTime(status.startTime, settings.timezone);
     const endStr = formatTime(status.expectedEndTime, settings.timezone);
