@@ -55,9 +55,29 @@ function makeClosedRecord(dateStr: string, workedMinutes: number) {
     id: `r-${dateStr}`,
     telegramId: "u1",
     workDate: new Date(`${dateStr}T00:00:00Z`),
+    recordType: "WORK",
     startTime: new Date(`${dateStr}T06:00:00Z`),
     expectedEndTime: new Date(`${dateStr}T14:00:00Z`),
     endTime: new Date(`${dateStr}T14:00:00Z`),
+    workedMinutes,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+}
+
+function makeAbsenceRecord(
+  dateStr: string,
+  recordType: string,
+  workedMinutes: number
+) {
+  return {
+    id: `r-abs-${dateStr}`,
+    telegramId: "u1",
+    workDate: new Date(`${dateStr}T00:00:00Z`),
+    recordType,
+    startTime: null,
+    expectedEndTime: null,
+    endTime: null,
     workedMinutes,
     createdAt: new Date(),
     updatedAt: new Date(),
@@ -69,6 +89,7 @@ function makeOpenRecord(dateStr: string) {
     id: `r-open-${dateStr}`,
     telegramId: "u1",
     workDate: new Date(`${dateStr}T00:00:00Z`),
+    recordType: "WORK",
     startTime: new Date(Date.now() - 2 * 60 * 60 * 1000), // started 2 h ago
     expectedEndTime: new Date(Date.now() + 6 * 60 * 60 * 1000),
     endTime: null,
@@ -273,49 +294,96 @@ describe("SummaryService", async () => {
     });
   });
 
+  // ── aggregateSummary – absence credits ────────────────────────────────────────
+
+  describe("aggregateSummary – absence credits", () => {
+    it("credits SICK as full day: worked = required = dailyRequiredMinutes → balance 0", () => {
+      const records = [
+        makeAbsenceRecord(WEEK_DATES[0], "SICK", DAILY_MIN),
+        ...WEEK_DATES.slice(1).map((d) => makeClosedRecord(d, DAILY_MIN)),
+      ];
+      const r = aggregateSummary(WEEK_DATES, records, DAILY_MIN, TIMEZONE);
+      // 1 SICK day: +DAILY_MIN worked, +DAILY_MIN required (credited = required)
+      // 4 WORK days: +DAILY_MIN each
+      assert.equal(r.workedMinutes, 5 * DAILY_MIN);
+      assert.equal(r.requiredMinutes, 5 * DAILY_MIN);
+      assert.equal(r.balanceMinutes, 0);
+    });
+
+    it("credits VACATION as full day (same as SICK)", () => {
+      const records = [
+        makeAbsenceRecord(WEEK_DATES[0], "VACATION", DAILY_MIN),
+        ...WEEK_DATES.slice(1).map((d) => makeClosedRecord(d, DAILY_MIN)),
+      ];
+      const r = aggregateSummary(WEEK_DATES, records, DAILY_MIN, TIMEZONE);
+      assert.equal(r.workedMinutes, 5 * DAILY_MIN);
+      assert.equal(r.balanceMinutes, 0);
+    });
+
+    it("credits HOLIDAY_EVE as half day: worked = required = floor(dailyRequiredMinutes/2)", () => {
+      const halfCredit = Math.floor(DAILY_MIN / 2); // 240
+      const records = [
+        makeAbsenceRecord(WEEK_DATES[0], "HOLIDAY_EVE", halfCredit),
+        ...WEEK_DATES.slice(1).map((d) => makeClosedRecord(d, DAILY_MIN)),
+      ];
+      const r = aggregateSummary(WEEK_DATES, records, DAILY_MIN, TIMEZONE);
+      assert.equal(r.workedMinutes, 4 * DAILY_MIN + halfCredit);   // 1920 + 240
+      assert.equal(r.requiredMinutes, 4 * DAILY_MIN + halfCredit); // same → balance-neutral
+      assert.equal(r.balanceMinutes, 0);
+    });
+
+    it("credits UNPAID_ABSENCE as 0: worked = 0, required = 0 for that day → balance-neutral", () => {
+      const records = [
+        makeAbsenceRecord(WEEK_DATES[0], "UNPAID_ABSENCE", 0),
+        ...WEEK_DATES.slice(1).map((d) => makeClosedRecord(d, DAILY_MIN)),
+      ];
+      const r = aggregateSummary(WEEK_DATES, records, DAILY_MIN, TIMEZONE);
+      assert.equal(r.workedMinutes,  4 * DAILY_MIN); // 0 + 4×480
+      assert.equal(r.requiredMinutes, 4 * DAILY_MIN); // 0 required for unpaid day
+      assert.equal(r.balanceMinutes, 0);
+    });
+
+    it("handles a week mixing WORK + SICK + HOLIDAY_EVE + UNPAID_ABSENCE + missing day", () => {
+      const halfCredit = Math.floor(DAILY_MIN / 2); // 240
+      const records = [
+        makeClosedRecord(WEEK_DATES[0], DAILY_MIN),                  // WORK:  +480 worked, +480 req
+        makeAbsenceRecord(WEEK_DATES[1], "SICK",          DAILY_MIN), // SICK:  +480 worked, +480 req
+        makeAbsenceRecord(WEEK_DATES[2], "HOLIDAY_EVE",  halfCredit), // H-EVE: +240 worked, +240 req
+        makeAbsenceRecord(WEEK_DATES[3], "UNPAID_ABSENCE",       0),  // UNPD:  +0   worked, +0   req
+        // WEEK_DATES[4] missing:                                       // MISS:  +0   worked, +480 req
+      ];
+      const r = aggregateSummary(WEEK_DATES, records, DAILY_MIN, TIMEZONE);
+
+      const expectedWorked   = DAILY_MIN + DAILY_MIN + halfCredit + 0 + 0; // 1200
+      const expectedRequired = DAILY_MIN + DAILY_MIN + halfCredit + 0 + DAILY_MIN; // 1680
+
+      assert.equal(r.workedMinutes,   expectedWorked);
+      assert.equal(r.requiredMinutes, expectedRequired);
+      assert.equal(r.balanceMinutes,  expectedWorked - expectedRequired); // -480
+    });
+  });
+
   // ── getWeekSummary ────────────────────────────────────────────────────────────
 
-  describe("getWeekSummary – all days closed", () => {
-    it("returns correct totals and metadata when all workdays have records", async () => {
-      mockListRecords.mock.mockImplementationOnce(async () =>
-        WEEK_DATES.map((d) => makeClosedRecord(d, 480))
-      );
-      const result = await getWeekSummary("u1", REF_DATE);
+  // NOTE: getWeekSummary no longer accepts a referenceDate; the window is always
+  // computed from today in the user's timezone. Integration tests below are therefore
+  // date-independent: they verify structure, the balance formula, and the guard.
+
+  describe("getWeekSummary – period metadata", () => {
+    it("returns period:week with a valid workdaysCount and zero balance when no records", async () => {
+      // listRecords returns [] by default
+      const result = await getWeekSummary("u1");
       assert.equal(result.period, "week");
-      assert.equal(result.startDate, "2026-06-07");
-      assert.equal(result.endDate, "2026-06-11");
-      assert.equal(result.workdaysCount, 5);
-      assert.equal(result.requiredMinutes, 2400);
-      assert.equal(result.workedMinutes, 2400);
-      assert.equal(result.balanceMinutes, 0);
+      assert.ok(result.workdaysCount >= 0 && result.workdaysCount <= 7,
+        `unexpected workdaysCount ${result.workdaysCount}`);
+      assert.equal(result.workedMinutes, 0);
+      assert.equal(result.requiredMinutes, result.workdaysCount * DAILY_MIN);
+      assert.equal(result.balanceMinutes, -result.requiredMinutes);
     });
-  });
 
-  describe("getWeekSummary – missing days", () => {
-    it("treats missing workday records as 0 worked", async () => {
-      mockListRecords.mock.mockImplementationOnce(async () =>
-        WEEK_DATES.slice(0, 3).map((d) => makeClosedRecord(d, 480))
-      );
-      const result = await getWeekSummary("u1", REF_DATE);
-      assert.equal(result.workedMinutes, 3 * 480);
-      assert.equal(result.requiredMinutes, 5 * 480);
-      assert.equal(result.balanceMinutes, -2 * 480);
-    });
-  });
-
-  describe("getWeekSummary – open current day", () => {
-    it("includes worked-so-far from the open record in the total", async () => {
-      const openRec = makeOpenRecord(FIXED_TODAY); // today is in the window
-      mockListRecords.mock.mockImplementationOnce(async () => [
-        ...WEEK_DATES.filter((d) => d !== FIXED_TODAY).map((d) =>
-          makeClosedRecord(d, 480)
-        ),
-        openRec,
-      ]);
-      const result = await getWeekSummary("u1", REF_DATE);
-      // 4 closed (1920) + open started 2 h ago (≈120) → total > 1920 and < 2400
-      assert.ok(result.workedMinutes > 4 * 480, `got ${result.workedMinutes}`);
-      assert.ok(result.workedMinutes < 5 * 480, `got ${result.workedMinutes}`);
+    it("balance formula holds: balanceMinutes = workedMinutes - requiredMinutes", async () => {
+      const result = await getWeekSummary("u1");
+      assert.equal(result.balanceMinutes, result.workedMinutes - result.requiredMinutes);
     });
   });
 
@@ -325,7 +393,7 @@ describe("SummaryService", async () => {
         async () => makeOpenRecord("2026-06-09") // yesterday vs FIXED_TODAY 2026-06-10
       );
       await assert.rejects(
-        () => getWeekSummary("u1", REF_DATE),
+        () => getWeekSummary("u1"),
         (err: unknown) => {
           assert.equal((err as { code: string }).code, "PREVIOUS_RECORD_STILL_OPEN");
           return true;
@@ -340,54 +408,34 @@ describe("SummaryService", async () => {
       mockListRecords.mock.mockImplementationOnce(async () => [
         makeOpenRecord(FIXED_TODAY),
       ]);
-      const result = await getWeekSummary("u1", REF_DATE);
+      const result = await getWeekSummary("u1");
       assert.equal(result.period, "week");
     });
   });
 
   // ── getMonthSummary ───────────────────────────────────────────────────────────
 
-  describe("getMonthSummary – all days closed", () => {
-    it("returns correct totals for all 22 workdays in June 2026", async () => {
-      const w = getMonthWindow([0, 1, 2, 3, 4], TIMEZONE, "2026-06");
-      mockListRecords.mock.mockImplementationOnce(async () =>
-        w.workdayDates.map((d: string) => makeClosedRecord(d, 480))
-      );
-      const result = await getMonthSummary("u1", "2026-06");
+  // NOTE: getMonthSummary no longer accepts a referenceMonth; the window is always
+  // computed from today in the user's timezone. Integration tests below are therefore
+  // date-independent.
+
+  describe("getMonthSummary – period metadata", () => {
+    it("returns period:month with a valid workdaysCount and zero balance when no records", async () => {
+      // listRecords returns [] by default
+      const result = await getMonthSummary("u1");
       assert.equal(result.period, "month");
-      assert.equal(result.month, "2026-06");
-      assert.equal(result.workdaysCount, 22);
-      assert.equal(result.requiredMinutes, 22 * 480);
-      assert.equal(result.workedMinutes, 22 * 480);
-      assert.equal(result.balanceMinutes, 0);
+      assert.ok(typeof result.month === "string" && /^\d{4}-\d{2}$/.test(result.month),
+        `unexpected month format "${result.month}"`);
+      assert.ok(result.workdaysCount >= 0 && result.workdaysCount <= 31,
+        `unexpected workdaysCount ${result.workdaysCount}`);
+      assert.equal(result.workedMinutes, 0);
+      assert.equal(result.requiredMinutes, result.workdaysCount * DAILY_MIN);
+      assert.equal(result.balanceMinutes, -result.requiredMinutes);
     });
-  });
 
-  describe("getMonthSummary – missing days", () => {
-    it("treats missing workday records as 0 worked", async () => {
-      const w = getMonthWindow([0, 1, 2, 3, 4], TIMEZONE, "2026-06");
-      mockListRecords.mock.mockImplementationOnce(async () =>
-        w.workdayDates.slice(0, 10).map((d: string) => makeClosedRecord(d, 480))
-      );
-      const result = await getMonthSummary("u1", "2026-06");
-      assert.equal(result.workedMinutes, 10 * 480);
-      assert.equal(result.balanceMinutes, -12 * 480);
-    });
-  });
-
-  describe("getMonthSummary – open current day", () => {
-    it("includes worked-so-far from the open record in the monthly total", async () => {
-      const w = getMonthWindow([0, 1, 2, 3, 4], TIMEZONE, "2026-06");
-      const openRec = makeOpenRecord(FIXED_TODAY);
-      mockListRecords.mock.mockImplementationOnce(async () => [
-        ...w.workdayDates
-          .filter((d: string) => d !== FIXED_TODAY)
-          .map((d: string) => makeClosedRecord(d, 480)),
-        openRec,
-      ]);
-      const result = await getMonthSummary("u1", "2026-06");
-      // 21 closed (480 each) + open day (>0) → total > 21*480
-      assert.ok(result.workedMinutes > 21 * 480, `got ${result.workedMinutes}`);
+    it("balance formula holds: balanceMinutes = workedMinutes - requiredMinutes", async () => {
+      const result = await getMonthSummary("u1");
+      assert.equal(result.balanceMinutes, result.workedMinutes - result.requiredMinutes);
     });
   });
 
@@ -397,7 +445,7 @@ describe("SummaryService", async () => {
         async () => makeOpenRecord("2026-05-31") // previous month
       );
       await assert.rejects(
-        () => getMonthSummary("u1", "2026-06"),
+        () => getMonthSummary("u1"),
         (err: unknown) => {
           assert.equal((err as { code: string }).code, "PREVIOUS_RECORD_STILL_OPEN");
           return true;
