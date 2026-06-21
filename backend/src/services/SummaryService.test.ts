@@ -320,46 +320,47 @@ describe("SummaryService", async () => {
       assert.equal(r.balanceMinutes, 0);
     });
 
-    it("credits HOLIDAY_EVE as half day: worked = required = floor(dailyRequiredMinutes/2)", () => {
+    it("credits HOLIDAY_EVE as half day: worked = 4*full+half, required = 5*full → balance negative", () => {
       const halfCredit = Math.floor(DAILY_MIN / 2); // 240
       const records = [
         makeAbsenceRecord(WEEK_DATES[0], "HOLIDAY_EVE", halfCredit),
         ...WEEK_DATES.slice(1).map((d) => makeClosedRecord(d, DAILY_MIN)),
       ];
       const r = aggregateSummary(WEEK_DATES, records, DAILY_MIN, TIMEZONE);
-      assert.equal(r.workedMinutes, 4 * DAILY_MIN + halfCredit);   // 1920 + 240
-      assert.equal(r.requiredMinutes, 4 * DAILY_MIN + halfCredit); // same → balance-neutral
-      assert.equal(r.balanceMinutes, 0);
+      assert.equal(r.workedMinutes,   4 * DAILY_MIN + halfCredit); // 1920 + 240 = 2160
+      assert.equal(r.requiredMinutes, 5 * DAILY_MIN);              // always full per workday = 2400
+      assert.equal(r.balanceMinutes,  4 * DAILY_MIN + halfCredit - 5 * DAILY_MIN); // -240
     });
 
-    it("credits UNPAID_ABSENCE as 0: worked = 0, required = 0 for that day → balance-neutral", () => {
+    it("credits UNPAID_ABSENCE as 0: worked = 4*full, required = 5*full → balance negative", () => {
       const records = [
         makeAbsenceRecord(WEEK_DATES[0], "UNPAID_ABSENCE", 0),
         ...WEEK_DATES.slice(1).map((d) => makeClosedRecord(d, DAILY_MIN)),
       ];
       const r = aggregateSummary(WEEK_DATES, records, DAILY_MIN, TIMEZONE);
-      assert.equal(r.workedMinutes,  4 * DAILY_MIN); // 0 + 4×480
-      assert.equal(r.requiredMinutes, 4 * DAILY_MIN); // 0 required for unpaid day
-      assert.equal(r.balanceMinutes, 0);
+      assert.equal(r.workedMinutes,   4 * DAILY_MIN);  // 0 + 4×480 = 1920
+      assert.equal(r.requiredMinutes, 5 * DAILY_MIN);  // always full per workday = 2400
+      assert.equal(r.balanceMinutes,  -DAILY_MIN);     // 1920 - 2400 = -480
     });
 
     it("handles a week mixing WORK + SICK + HOLIDAY_EVE + UNPAID_ABSENCE + missing day", () => {
       const halfCredit = Math.floor(DAILY_MIN / 2); // 240
       const records = [
-        makeClosedRecord(WEEK_DATES[0], DAILY_MIN),                  // WORK:  +480 worked, +480 req
-        makeAbsenceRecord(WEEK_DATES[1], "SICK",          DAILY_MIN), // SICK:  +480 worked, +480 req
-        makeAbsenceRecord(WEEK_DATES[2], "HOLIDAY_EVE",  halfCredit), // H-EVE: +240 worked, +240 req
-        makeAbsenceRecord(WEEK_DATES[3], "UNPAID_ABSENCE",       0),  // UNPD:  +0   worked, +0   req
-        // WEEK_DATES[4] missing:                                       // MISS:  +0   worked, +480 req
+        makeClosedRecord(WEEK_DATES[0], DAILY_MIN),                   // WORK:  +480 worked
+        makeAbsenceRecord(WEEK_DATES[1], "SICK",          DAILY_MIN), // SICK:  +480 worked
+        makeAbsenceRecord(WEEK_DATES[2], "HOLIDAY_EVE",  halfCredit), // H-EVE: +240 worked
+        makeAbsenceRecord(WEEK_DATES[3], "UNPAID_ABSENCE",       0),  // UNPD:  +0   worked
+        // WEEK_DATES[4] missing:                                       // MISS:  +0   worked
+        // required = 5 × DAILY_MIN for all 5 workdays
       ];
       const r = aggregateSummary(WEEK_DATES, records, DAILY_MIN, TIMEZONE);
 
       const expectedWorked   = DAILY_MIN + DAILY_MIN + halfCredit + 0 + 0; // 1200
-      const expectedRequired = DAILY_MIN + DAILY_MIN + halfCredit + 0 + DAILY_MIN; // 1680
+      const expectedRequired = 5 * DAILY_MIN;                               // 2400
 
       assert.equal(r.workedMinutes,   expectedWorked);
       assert.equal(r.requiredMinutes, expectedRequired);
-      assert.equal(r.balanceMinutes,  expectedWorked - expectedRequired); // -480
+      assert.equal(r.balanceMinutes,  expectedWorked - expectedRequired); // -1200
     });
   });
 

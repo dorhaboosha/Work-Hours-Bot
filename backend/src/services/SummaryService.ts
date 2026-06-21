@@ -7,8 +7,6 @@ import { getLocalDate, utcToLocalDate } from "@/utils/DateUtils";
 import { calcWorkedMinutesSoFar } from "@/services/TimeCalculationService";
 import { AppError } from "@/utils/AppError";
 import type { WorkSummary } from "@shared/types/ViewTypes";
-import { isAbsenceRecordType } from "@shared/utils/recordTypeUtils";
-import type { DailyRecordType } from "@shared/types/CoreTypes";
 
 // ── Internal types ────────────────────────────────────────────────────────────
 
@@ -151,14 +149,17 @@ interface AggregateResult {
 
 /**
  * Aggregates totals across a list of expected workday dates, crediting each
- * absence type correctly:
+ * absence type correctly per §3.10 of the spec:
  *
- * - **WORK record (closed)** → stored `workedMinutes` worked; full `dailyRequiredMinutes` required.
+ * - **Required minutes** = number of configured workdays × `dailyRequiredMinutes` (always full).
+ * - **WORK record (closed)** → stored `workedMinutes` contributed to worked.
  * - **WORK record (open)**   → caller pre-fills `workedMinutes` with live value via `enrichWithOpenDay`.
- * - **Absence record**       → the credited amount (stored in `workedMinutes` by `MARK_ABSENCE`) counts
- *   as both worked *and* required for that day, keeping the day balance-neutral regardless of type
- *   (SICK/VACATION/HOLIDAY/ELECTION → full credit; HOLIDAY_EVE → half; UNPAID_ABSENCE → 0).
- * - **No record**            → 0 worked, full `dailyRequiredMinutes` required (missing day).
+ * - **Absence record**       → credited minutes (stored by `MARK_ABSENCE`) contributed to worked:
+ *   SICK/VACATION/HOLIDAY/ELECTION → full day; HOLIDAY_EVE → half day; UNPAID_ABSENCE → 0.
+ * - **No record**            → 0 worked, full required (missing day).
+ *
+ * Because required is always full, HOLIDAY_EVE and UNPAID_ABSENCE produce negative balances,
+ * matching the single-day edit result and the spec formula.
  */
 export function aggregateSummary(
   workdayDates: string[],
@@ -173,24 +174,19 @@ export function aggregateSummary(
   }
 
   let workedMinutes = 0;
-  let requiredMinutes = 0;
 
   for (const date of workdayDates) {
     const rec = byDate.get(date);
-
-    if (rec && isAbsenceRecordType(rec.recordType as DailyRecordType)) {
-      // Absence: credited amount counts as both worked and required → balance-neutral
-      const credited = rec.workedMinutes ?? 0;
-      workedMinutes += credited;
-      requiredMinutes += credited;
-    } else {
-      // WORK record or missing day: full required applies
-      workedMinutes += rec?.workedMinutes ?? 0;
-      requiredMinutes += dailyRequiredMinutes;
-    }
+    // All record types (WORK, absence, missing) contribute stored/credited workedMinutes.
+    // SICK/VACATION/HOLIDAY/ELECTION store full day → balance 0.
+    // HOLIDAY_EVE stores half day → balance = -half.
+    // UNPAID_ABSENCE stores 0 → balance = -full.
+    // WORK stores actual minutes; missing days contribute 0.
+    workedMinutes += rec?.workedMinutes ?? 0;
   }
 
   const workdaysCount = workdayDates.length;
+  const requiredMinutes = workdaysCount * dailyRequiredMinutes;
   const balanceMinutes = workedMinutes - requiredMinutes;
 
   return { workdaysCount, requiredMinutes, workedMinutes, balanceMinutes };
