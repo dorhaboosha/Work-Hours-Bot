@@ -1,6 +1,6 @@
 import type { Context } from "telegraf";
 import { getSettings } from "@/services/SettingsService";
-import { t } from "@/localization/LocalizationService";
+import { t } from "@/i18n";
 import type { LanguageCode } from "@shared/types/CoreTypes";
 
 export async function handleHelp(ctx: Context): Promise<void> {
@@ -14,5 +14,5 @@ export async function handleHelp(ctx: Context): Promise<void> {
     lang = settings.language as LanguageCode;
   }
 
-  await ctx.reply(t(lang).help, { parse_mode: "Markdown" });
+  await ctx.reply(t("help", lang), { parse_mode: "Markdown" });
 }

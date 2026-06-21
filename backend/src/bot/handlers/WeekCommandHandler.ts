@@ -3,7 +3,7 @@ import { getWeekSummary } from "@/services/SummaryService";
 import { getSettingsOrThrow } from "@/services/SettingsService";
 import { formatMinutesAsDuration, formatBalance } from "@/bot/utils/formatMessage";
 import { handleBotError } from "@/bot/utils/handleBotError";
-import { t } from "@/localization/LocalizationService";
+import { t } from "@/i18n";
 import type { LanguageCode } from "@shared/types/CoreTypes";
 
 export async function handleWeek(ctx: Context): Promise<void> {
@@ -21,16 +21,17 @@ export async function handleWeek(ctx: Context): Promise<void> {
     const workedStr = formatMinutesAsDuration(summary.workedMinutes);
     const requiredStr = formatMinutesAsDuration(summary.requiredMinutes);
     const balanceStr = formatBalance(summary.balanceMinutes);
+    const balanceEmoji = summary.balanceMinutes >= 0 ? "🟢" : "🔴";
 
     await ctx.reply(
-      t(lang).weekSummary({
+      t("week.summary", lang, {
         startDate: summary.startDate!,
         endDate: summary.endDate!,
         workdaysCount: summary.workdaysCount,
         requiredStr,
         workedStr,
         balanceStr,
-        balancePositive: summary.balanceMinutes >= 0,
+        balanceEmoji,
       }),
       { parse_mode: "Markdown" }
     );

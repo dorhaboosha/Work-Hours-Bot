@@ -2,7 +2,7 @@ import type { Context } from "telegraf";
 import { getSettingsOrThrow, updateSettings } from "@/services/SettingsService";
 import { formatMinutesAsDuration } from "@/bot/utils/formatMessage";
 import { handleBotError } from "@/bot/utils/handleBotError";
-import { t, formatWorkdays } from "@/localization/LocalizationService";
+import { t, formatWorkdays } from "@/i18n";
 import { LANGUAGE_LABELS } from "@shared/types/CoreTypes";
 import { decimalHoursToMinutes } from "@shared/utils/timeUtils";
 import type { LanguageCode, Weekday } from "@shared/types/CoreTypes";
@@ -118,7 +118,7 @@ export async function handleSettingsEdit(ctx: Context): Promise<void> {
       [
         "✅ *Settings updated.*",
         "",
-        t(newLang).settingsDisplay({ dailyHoursStr, workdaysStr, timezone: updated.timezone, languageLabel }),
+        t("settings.display", newLang, { dailyHoursStr, workdaysStr, timezone: updated.timezone, languageLabel }),
       ].join("\n"),
       { parse_mode: "Markdown" }
     );

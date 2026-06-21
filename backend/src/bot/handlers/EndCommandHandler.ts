@@ -3,7 +3,7 @@ import { endWorkday } from "@/services/WorkdayService";
 import { getSettingsOrThrow } from "@/services/SettingsService";
 import { formatTime, formatMinutesAsDuration, formatBalance } from "@/bot/utils/formatMessage";
 import { handleBotError } from "@/bot/utils/handleBotError";
-import { t } from "@/localization/LocalizationService";
+import { t } from "@/i18n";
 import type { LanguageCode } from "@shared/types/CoreTypes";
 
 export async function handleEnd(ctx: Context): Promise<void> {
@@ -22,16 +22,17 @@ export async function handleEnd(ctx: Context): Promise<void> {
     const workedStr = formatMinutesAsDuration(result.workedMinutes);
     const requiredStr = formatMinutesAsDuration(result.requiredMinutes);
     const balanceStr = formatBalance(result.balanceMinutes);
+    const balanceEmoji = result.balanceMinutes >= 0 ? "🟢" : "🔴";
 
     await ctx.reply(
-      t(lang).workdayEnded({
+      t("end.success", lang, {
         workDate: result.workDate,
         startStr,
         endStr,
         workedStr,
         requiredStr,
         balanceStr,
-        balancePositive: result.balanceMinutes >= 0,
+        balanceEmoji,
       }),
       { parse_mode: "Markdown" }
     );

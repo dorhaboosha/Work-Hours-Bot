@@ -3,7 +3,7 @@ import { startWorkday } from "@/services/WorkdayService";
 import { getSettingsOrThrow } from "@/services/SettingsService";
 import { formatTime, formatMinutesAsDuration } from "@/bot/utils/formatMessage";
 import { handleBotError } from "@/bot/utils/handleBotError";
-import { t } from "@/localization/LocalizationService";
+import { t } from "@/i18n";
 import type { LanguageCode } from "@shared/types/CoreTypes";
 
 export async function handleStart(ctx: Context): Promise<void> {
@@ -23,7 +23,7 @@ export async function handleStart(ctx: Context): Promise<void> {
     const durationStr = formatMinutesAsDuration(settings.dailyRequiredMinutes);
 
     await ctx.reply(
-      t(lang).workdayStarted({ startStr, endStr, durationStr }),
+      t("start.success", lang, { startStr, endStr, durationStr }),
       { parse_mode: "Markdown" }
     );
   } catch (err) {

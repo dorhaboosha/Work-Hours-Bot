@@ -1,7 +1,7 @@
 import type { Context } from "telegraf";
 import { AppError } from "@/utils/AppError";
 import type { LanguageCode } from "@shared/types/CoreTypes";
-import { t } from "@/localization/LocalizationService";
+import { t } from "@/i18n";
 
 /**
  * Handles any error thrown by a service call inside a bot command handler.
@@ -15,37 +15,36 @@ export async function handleBotError(
   lang: LanguageCode = "en"
 ): Promise<void> {
   if (err instanceof AppError) {
-    const msgs = t(lang).errors;
     let msg: string;
 
     switch (err.code) {
       case "USER_SETTINGS_NOT_FOUND":
-        msg = msgs.userSettingsNotFound;
+        msg = t("errors.userSettingsNotFound", lang);
         break;
       case "DAILY_RECORD_ALREADY_EXISTS":
-        msg = msgs.dailyRecordAlreadyExists;
+        msg = t("errors.dailyRecordAlreadyExists", lang);
         break;
       case "ACTIVE_RECORD_NOT_FOUND":
-        msg = msgs.activeRecordNotFound;
+        msg = t("errors.activeRecordNotFound", lang);
         break;
       case "DAILY_RECORD_ALREADY_CLOSED":
-        msg = msgs.dailyRecordAlreadyClosed;
+        msg = t("errors.dailyRecordAlreadyClosed", lang);
         break;
       case "PREVIOUS_RECORD_STILL_OPEN":
-        msg = msgs.previousRecordStillOpen(err.message);
+        msg = t("errors.previousRecordStillOpen", lang, { message: err.message });
         break;
       case "SETUP_ALREADY_COMPLETED":
-        msg = msgs.setupAlreadyCompleted;
+        msg = t("errors.setupAlreadyCompleted", lang);
         break;
       case "VALIDATION_ERROR":
       case "INVALID_DATE_FORMAT":
       case "INVALID_TIME_FORMAT":
       case "INVALID_TIME_RANGE":
       case "INVALID_RECORD_TYPE":
-        msg = msgs.validationError(err.message);
+        msg = t("errors.validationError", lang, { message: err.message });
         break;
       default:
-        msg = msgs.unknown;
+        msg = t("errors.unknown", lang);
     }
 
     await ctx.reply(msg, { parse_mode: "Markdown" });

@@ -3,7 +3,7 @@ import { setupSettings, getSettings, DEFAULT_TIMEZONE, DEFAULT_WORKDAYS } from "
 import { formatMinutesAsDuration } from "@/bot/utils/formatMessage";
 import { handleBotError } from "@/bot/utils/handleBotError";
 import { AppError } from "@/utils/AppError";
-import { t, formatWorkdays } from "@/localization/LocalizationService";
+import { t, formatWorkdays } from "@/i18n";
 import { LANGUAGE_LABELS } from "@shared/types/CoreTypes";
 import type { LanguageCode, Weekday } from "@shared/types/CoreTypes";
 
@@ -81,7 +81,7 @@ export async function handleSetup(ctx: Context): Promise<void> {
       [
         "✅ *Setup complete!*",
         "",
-        t(lang).settingsDisplay({ dailyHoursStr, workdaysStr, timezone: settings.timezone, languageLabel }),
+        t("settings.display", lang, { dailyHoursStr, workdaysStr, timezone: settings.timezone, languageLabel }),
         "",
         "You can now use /start to begin tracking your workday.",
       ].join("\n"),
@@ -97,7 +97,7 @@ export async function handleSetup(ctx: Context): Promise<void> {
         const workdaysStr = formatWorkdays(existing.workdays as Weekday[], lang);
         const languageLabel = LANGUAGE_LABELS[lang];
         await ctx.reply(
-          t(lang).setupAlreadyCompleted({ dailyHoursStr, workdaysStr, timezone: existing.timezone, languageLabel }),
+          t("setup.alreadyCompleted", lang, { dailyHoursStr, workdaysStr, timezone: existing.timezone, languageLabel }),
           { parse_mode: "Markdown" }
         );
         return;

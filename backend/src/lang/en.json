@@ -1,0 +1,66 @@
+{
+  "weekday": {
+    "0": "Sunday",
+    "1": "Monday",
+    "2": "Tuesday",
+    "3": "Wednesday",
+    "4": "Thursday",
+    "5": "Friday",
+    "6": "Saturday"
+  },
+  "absenceType": {
+    "SICK": "Sick day",
+    "VACATION": "Vacation day",
+    "HOLIDAY": "Holiday",
+    "HOLIDAY_EVE": "Holiday eve",
+    "UNPAID_ABSENCE": "Unpaid absence",
+    "ELECTION": "Election day"
+  },
+  "start": {
+    "success": "▶️ *Workday started!*\n\n🕐 Start time:    *{{startStr}}*\n🏁 Expected end:  *{{endStr}}*\n⏱ Required:       *{{durationStr}}*\n\nUse /status to check your progress, or /end when you're done."
+  },
+  "status": {
+    "active": "📊 *Today's status*\n\n🗓 Date:         *{{workDate}}*\n🕐 Start:        *{{startStr}}*\n🏁 Expected end: *{{endStr}}*\n\n✅ Worked:       *{{workedStr}}* / {{requiredStr}}\n⏳ Remaining:    *{{remainingStr}}*\n⚖️ Balance:      *{{balanceStr}}*\n\n{{hint}}",
+    "hint": "Use /end to close your workday when you're done, or /edit dd-mm to fix a past date.",
+    "hintGoalReached": "🎉 You've reached your daily goal! Use /end when you're done, or /edit dd-mm to fix a past date."
+  },
+  "end": {
+    "success": "⏹ *Workday ended!*\n\n🗓 Date:       *{{workDate}}*\n🕐 Start:      *{{startStr}}*\n🏁 End:        *{{endStr}}*\n\n✅ Worked:     *{{workedStr}}*\n📋 Required:   *{{requiredStr}}*\n{{balanceEmoji}} Balance:    *{{balanceStr}}*\n\nUse /week or /month to view your summary."
+  },
+  "week": {
+    "summary": "📅 *Weekly summary*\n📆 Period: *{{startDate}}* → *{{endDate}}*\n\n📋 Workdays:  *{{workdaysCount}}*\n⏱ Required:  *{{requiredStr}}*\n✅ Worked:    *{{workedStr}}*\n{{balanceEmoji}} Balance:   *{{balanceStr}}*"
+  },
+  "month": {
+    "summary": "🗓 *Monthly summary*\n📆 Month: *{{month}}*\n\n📋 Workdays:  *{{workdaysCount}}*\n⏱ Required:  *{{requiredStr}}*\n✅ Worked:    *{{workedStr}}*\n{{balanceEmoji}} Balance:   *{{balanceStr}}*"
+  },
+  "settings": {
+    "display": "⚙️ *Your current settings*\n\n📋 Daily hours:  *{{dailyHoursStr}}*\n📅 Workdays:     *{{workdaysStr}}*\n🌍 Timezone:     *{{timezone}}*\n🗣 Language:     *{{languageLabel}}*"
+  },
+  "setup": {
+    "alreadyCompleted": "✅ *Setup is already complete.*\n\nCurrent settings:\n  Daily hours: {{dailyHoursStr}}\n  Workdays:    {{workdaysStr}}\n  Timezone:    {{timezone}}\n  Language:    {{languageLabel}}\n\nTo change your settings, use:\n/settings\\_edit"
+  },
+  "help": "📖 *WorkHours Bot — Available commands*\n\n/start          — Start today's workday\n/status         — Show today's active status\n/end            — End today's active workday\n/edit dd-mm     — Edit or fix a specific date\n/week           — Show current week summary\n/month          — Show current month summary\n/settings       — Show current settings\n/settings\\_edit — Edit settings\n/help           — Show this message",
+  "edit": {
+    "openRecord": "📋 *{{date}} — open workday*\n\nWhat do you want to do?\n\n1. Set end hour\n2. Set start and end hours\n3. Mark absence\n4. Cancel",
+    "noRecord": "📋 *No record found for {{date}}*\n\nWhat do you want to do?\n\n1. Set start and end hours\n2. Mark absence\n3. Cancel",
+    "closedRecord": "📋 *{{date}} — completed work record*\n\nWhat do you want to do?\n\n1. Update start and end hours\n2. Mark absence instead\n3. Cancel",
+    "absenceRecord": "📋 *{{date}} — marked as {{absenceLabel}}*\n\nWhat do you want to do?\n\n1. Set start and end hours instead\n2. Change absence type\n3. Cancel",
+    "promptEndHour": "Enter end time:\n\nExample: 17:30",
+    "promptStartAndEndHours": "Enter start and end time:\n\nExample: 08:15-17:30",
+    "absenceTypeList": "Choose absence type:\n\n1. Sick day\n2. Vacation day\n3. Holiday\n4. Holiday eve\n5. Unpaid absence\n6. Election day",
+    "endHourSaved": "✅ *End hour saved*\n\n📅 Date:    *{{date}}*\n🕐 Start:   *{{startStr}}*\n🏁 End:     *{{endStr}}*\n✅ Worked:  *{{workedStr}}*\n⚖️ Balance: *{{balanceStr}}*",
+    "startEndSaved": "✅ *Start and end hours saved*\n\n📅 Date:    *{{date}}*\n🕐 Start:   *{{startStr}}*\n🏁 End:     *{{endStr}}*\n✅ Worked:  *{{workedStr}}*\n⚖️ Balance: *{{balanceStr}}*",
+    "absenceSaved": "✅ *{{absenceLabel}} saved*\n\n📅 Date:       *{{date}}*\n⏱ Counted as: *{{creditedStr}}*\n⚖️ Balance:    *{{balanceStr}}*",
+    "cancelled": "↩️ Cancelled."
+  },
+  "errors": {
+    "userSettingsNotFound": "⚙️ *You haven't configured your account yet.*\n\nRun `/setup` to get started.",
+    "dailyRecordAlreadyExists": "⚠️ *You've already started today's workday.*\n\nUse `/status` to check your progress or `/end` when you're done.",
+    "activeRecordNotFound": "⚠️ *No active workday found.*\n\nUse `/start` to begin your day, or `/edit dd-mm` to log or fix a past date.",
+    "dailyRecordAlreadyClosed": "⚠️ *Today's workday is already closed.*\n\nUse `/status` to review today's record or `/week` to see your weekly summary.",
+    "previousRecordStillOpen": "⚠️ *You have an unfinished workday.*\n\n{{message}}\n\n_Use `/edit dd-mm` to fix it, then you can start a new day or view summaries._",
+    "setupAlreadyCompleted": "✅ *Setup is already complete.*\n\nUse `/settings` to view your settings or `/settings\\_edit` to change them.",
+    "validationError": "❌ *Invalid input.*\n\n{{message}}",
+    "unknown": "❌ *Something went wrong.* Please try again later."
+  }
+}

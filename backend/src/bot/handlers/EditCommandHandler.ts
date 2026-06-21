@@ -2,7 +2,7 @@ import type { Context } from "telegraf";
 import { getEditDayOptions } from "@/services/EditWorkdayService";
 import { getSettingsOrThrow } from "@/services/SettingsService";
 import { handleBotError } from "@/bot/utils/handleBotError";
-import { t } from "@/localization/LocalizationService";
+import { t } from "@/i18n";
 import type { LanguageCode, AbsenceRecordType, DailyRecordType } from "@shared/types/CoreTypes";
 import { isAbsenceRecordType } from "@shared/utils/recordTypeUtils";
 
@@ -31,26 +31,25 @@ export async function handleEdit(ctx: Context): Promise<void> {
 
     const ddMm = args[0];
     const options = await getEditDayOptions(telegramId, ddMm);
-    const catalog = t(lang);
 
     let prompt: string;
     switch (options.state) {
       case "OPEN_WORK_RECORD":
-        prompt = catalog.editDayOpenRecord({ date: ddMm });
+        prompt = t("edit.openRecord", lang, { date: ddMm });
         break;
       case "NO_RECORD":
-        prompt = catalog.editDayNoRecord({ date: ddMm });
+        prompt = t("edit.noRecord", lang, { date: ddMm });
         break;
       case "CLOSED_WORK_RECORD":
-        prompt = catalog.editDayClosedRecord({ date: ddMm });
+        prompt = t("edit.closedRecord", lang, { date: ddMm });
         break;
       case "ABSENCE_RECORD": {
         const recType = options.record?.recordType as DailyRecordType | undefined;
         const absenceLabel =
           recType && isAbsenceRecordType(recType)
-            ? catalog.absenceTypeNames[recType as AbsenceRecordType]
+            ? t(`absenceType.${recType as AbsenceRecordType}`, lang)
             : recType ?? "absence";
-        prompt = catalog.editDayAbsenceRecord({ date: ddMm, absenceLabel });
+        prompt = t("edit.absenceRecord", lang, { date: ddMm, absenceLabel });
         break;
       }
     }

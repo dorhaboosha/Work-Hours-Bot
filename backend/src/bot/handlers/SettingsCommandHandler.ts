@@ -2,7 +2,7 @@ import type { Context } from "telegraf";
 import { getSettingsOrThrow } from "@/services/SettingsService";
 import { formatMinutesAsDuration } from "@/bot/utils/formatMessage";
 import { handleBotError } from "@/bot/utils/handleBotError";
-import { t, formatWorkdays } from "@/localization/LocalizationService";
+import { t, formatWorkdays } from "@/i18n";
 import { LANGUAGE_LABELS } from "@shared/types/CoreTypes";
 import type { LanguageCode, Weekday } from "@shared/types/CoreTypes";
 
@@ -20,7 +20,7 @@ export async function handleSettings(ctx: Context): Promise<void> {
     const languageLabel = LANGUAGE_LABELS[lang];
 
     await ctx.reply(
-      t(lang).settingsDisplay({ dailyHoursStr, workdaysStr, timezone: settings.timezone, languageLabel }),
+      t("settings.display", lang, { dailyHoursStr, workdaysStr, timezone: settings.timezone, languageLabel }),
       { parse_mode: "Markdown" }
     );
   } catch (err) {
