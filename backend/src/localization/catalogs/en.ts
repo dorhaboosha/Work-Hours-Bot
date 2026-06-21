@@ -143,7 +143,7 @@ const en: MessageCatalog = {
     "/start          — Start today's workday",
     "/status         — Show today's active status",
     "/end            — End today's active workday",
-    "/edit dd\\-mm    — Edit or fix a specific date",
+    "/edit dd-mm     — Edit or fix a specific date",
     "/week           — Show current week summary",
     "/month          — Show current month summary",
     "/settings       — Show current settings",
@@ -213,7 +213,7 @@ const en: MessageCatalog = {
   editPromptStartAndEndHours: [
     "Enter start and end time:",
     "",
-    "Example: 08:15\\-17:30",
+    "Example: 08:15-17:30",
   ].join("\n"),
 
   editAbsenceTypeList: [
