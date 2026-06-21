@@ -37,7 +37,18 @@
     "display": "⚙️ *ההגדרות שלך*\n\n📋 שעות יומיות:  *{{dailyHoursStr}}*\n📅 ימי עבודה:    *{{workdaysStr}}*\n🌍 אזור זמן:     *{{timezone}}*\n🗣 שפה:          *{{languageLabel}}*"
   },
   "setup": {
-    "alreadyCompleted": "✅ *ההגדרה כבר הושלמה.*\n\nהגדרות נוכחיות:\n  שעות יומיות: {{dailyHoursStr}}\n  ימי עבודה:   {{workdaysStr}}\n  אזור זמן:    {{timezone}}\n  שפה:         {{languageLabel}}\n\nלשינוי ההגדרות, השתמש ב:\n/settings\\_edit"
+    "alreadyCompleted": "✅ *ההגדרה כבר הושלמה.*\n\nהגדרות נוכחיות:\n  שעות יומיות: {{dailyHoursStr}}\n  ימי עבודה:   {{workdaysStr}}\n  אזור זמן:    {{timezone}}\n  שפה:         {{languageLabel}}\n\nלשינוי ההגדרות, השתמש ב:\n/settings\\_edit",
+    "complete": "✅ *ההגדרה הושלמה!*\n\n{{settings}}\n\nכעת תוכל להשתמש ב-/start כדי להתחיל לעקוב אחרי שעות העבודה."
+  },
+  "settingsEdit": {
+    "chooseField": "מה תרצה לערוך?\n\n1. שעות יומיות נדרשות\n2. ימי עבודה\n3. אזור זמן\n4. שפה",
+    "askHours": "הזן שעות יומיות נדרשות חדשות:\n\nדוגמה: `8.8`",
+    "chooseWorkdays": "בחר ימי עבודה:\n\n1. ראשון–חמישי\n2. שני–שישי\n3. מותאם אישית",
+    "askCustomWorkdays": "הזן ימי עבודה כמספרים מופרדים בפסיקים:\n\n0=ראשון, 1=שני, 2=שלישי, 3=רביעי, 4=חמישי, 5=שישי, 6=שבת\n\nדוגמה: `0,1,2,3,4`",
+    "chooseTimezone": "בחר אזור זמן:\n\n1. Asia/Jerusalem\n2. Europe/London\n3. Europe/Berlin\n4. America/New_York\n5. מותאם אישית (פורמט IANA)",
+    "askCustomTimezone": "הזן אזור זמן בפורמט IANA:\n\nדוגמה: `Asia/Jerusalem`",
+    "chooseLanguage": "בחר שפה:\n\n1. English\n2. עברית",
+    "updated": "✅ *ההגדרות עודכנו.*\n\n{{settings}}"
   },
   "help": "📖 *WorkHours Bot — פקודות זמינות*\n\n/start          — התחל את יום העבודה\n/status         — הצג סטטוס יום פעיל\n/end            — סיים את יום העבודה הפעיל\n/edit dd-mm     — ערוך או תקן תאריך ספציפי\n/week           — הצג סיכום שבועי\n/month          — הצג סיכום חודשי\n/settings       — הצג הגדרות נוכחיות\n/settings\\_edit — ערוך הגדרות\n/help           — הצג הודעה זו",
   "edit": {

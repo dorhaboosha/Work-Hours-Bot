@@ -3,6 +3,7 @@ import { getEditDayOptions } from "@/services/EditWorkdayService";
 import { getSettingsOrThrow } from "@/services/SettingsService";
 import { handleBotError } from "@/bot/utils/handleBotError";
 import { t } from "@/i18n";
+import { startEditFlow } from "@/bot/handlers/ConversationHandler";
 import type { LanguageCode, AbsenceRecordType, DailyRecordType } from "@shared/types/CoreTypes";
 import { isAbsenceRecordType } from "@shared/utils/recordTypeUtils";
 
@@ -54,8 +55,8 @@ export async function handleEdit(ctx: Context): Promise<void> {
       }
     }
 
-    // TODO(task 8.3): capture the user's reply and dispatch the chosen action.
-    await ctx.reply(prompt, { parse_mode: "Markdown" });
+    // Show the state prompt and open the conversation for the user's next reply
+    await startEditFlow(ctx, telegramId, ddMm, options.state, prompt);
   } catch (err) {
     await handleBotError(ctx, err, lang);
   }
