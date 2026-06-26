@@ -7,7 +7,7 @@ import {
 import type { UpdateUserSettingsData } from "@/repositories/UserSettingsRepository";
 import { AppError } from "@/utils/AppError";
 import { decimalHoursToMinutes } from "@shared/utils/timeUtils";
-import type { Weekday, LanguageCode } from "@shared/types/CoreTypes";
+import type { Weekday } from "@shared/types/CoreTypes";
 
 /** MVP default workdays: Sunday–Thursday */
 export const DEFAULT_WORKDAYS: Weekday[] = [0, 1, 2, 3, 4];
@@ -25,7 +25,6 @@ export interface SetupInput {
   dailyHoursOrMinutes: number;
   timezone: string;
   workdays: Weekday[];
-  language: LanguageCode;
 }
 
 /**
@@ -35,7 +34,7 @@ export interface SetupInput {
 export async function setupSettings(
   input: SetupInput
 ): Promise<UserSettings> {
-  const { telegramId, dailyHoursOrMinutes, timezone, workdays, language } = input;
+  const { telegramId, dailyHoursOrMinutes, timezone, workdays } = input;
 
   const existing = await findUserSettingsByTelegramId(telegramId);
   if (existing) {
@@ -57,7 +56,6 @@ export async function setupSettings(
     dailyRequiredMinutes,
     timezone,
     workdays,
-    language,
   });
 }
 
@@ -65,7 +63,6 @@ export interface UpdateSettingsInput {
   dailyRequiredMinutes?: number;
   timezone?: string;
   workdays?: Weekday[];
-  language?: LanguageCode;
 }
 
 /**
@@ -84,7 +81,6 @@ export async function updateSettings(
     }),
     ...(input.timezone !== undefined && { timezone: input.timezone }),
     ...(input.workdays !== undefined && { workdays: input.workdays }),
-    ...(input.language !== undefined && { language: input.language }),
   };
 
   return updateUserSettings(telegramId, data);
@@ -95,17 +91,6 @@ export async function getSettings(
   telegramId: string
 ): Promise<UserSettings | null> {
   return findUserSettingsByTelegramId(telegramId);
-}
-
-/**
- * Resolves the user's configured language without throwing.
- * Returns "en" when settings do not exist or the query fails.
- * Use this when you need the language early (e.g. for error formatting)
- * without requiring settings to exist.
- */
-export async function resolveUserLang(telegramId: string): Promise<LanguageCode> {
-  const settings = await findUserSettingsByTelegramId(telegramId).catch(() => null);
-  return (settings?.language as LanguageCode) ?? "en";
 }
 
 /**

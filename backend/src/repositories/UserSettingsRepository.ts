@@ -6,14 +6,12 @@ export interface UpsertUserSettingsData {
   dailyRequiredMinutes: number;
   timezone: string;
   workdays: number[];
-  language?: string;
 }
 
 export interface UpdateUserSettingsData {
   dailyRequiredMinutes?: number;
   timezone?: string;
   workdays?: number[];
-  language?: string;
 }
 
 export async function findUserSettingsByTelegramId(
@@ -25,12 +23,12 @@ export async function findUserSettingsByTelegramId(
 export async function upsertUserSettings(
   input: UpsertUserSettingsData
 ): Promise<UserSettings> {
-  const { telegramId, dailyRequiredMinutes, timezone, workdays, language } = input;
+  const { telegramId, dailyRequiredMinutes, timezone, workdays } = input;
 
   return prisma.userSettings.upsert({
     where: { telegramId },
-    update: { dailyRequiredMinutes, timezone, workdays, ...(language !== undefined && { language }) },
-    create: { telegramId, dailyRequiredMinutes, timezone, workdays, ...(language !== undefined && { language }) },
+    update: { dailyRequiredMinutes, timezone, workdays },
+    create: { telegramId, dailyRequiredMinutes, timezone, workdays },
   });
 }
 
