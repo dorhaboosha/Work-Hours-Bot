@@ -2,7 +2,7 @@ import type { NextFunction, Request, Response } from "express";
 import { setupSettings, getSettingsOrThrow, updateSettings } from "@/services/SettingsService";
 import { success } from "@/utils/ApiResponse";
 import type { SetupSettingsInput, UpdateSettingsInput } from "@/validators/SettingsSchemas";
-import type { Weekday, LanguageCode } from "@shared/types/CoreTypes";
+import type { Weekday } from "@shared/types/CoreTypes";
 
 export async function setup(
   req: Request,
@@ -16,7 +16,6 @@ export async function setup(
       dailyHoursOrMinutes: input.dailyRequiredMinutes,
       timezone: input.timezone,
       workdays: input.workdays as Weekday[],
-      language: input.language as LanguageCode,
     });
     res.status(201).json(success(settings));
   } catch (err) {
@@ -36,7 +35,6 @@ export async function updateByTelegramId(
       dailyRequiredMinutes: input.dailyRequiredMinutes,
       timezone: input.timezone,
       workdays: input.workdays as Weekday[] | undefined,
-      language: input.language as LanguageCode | undefined,
     });
     res.status(200).json(success(settings));
   } catch (err) {

@@ -4,17 +4,13 @@ import { getSettingsOrThrow } from "@/services/SettingsService";
 import { formatTime, formatMinutesAsDuration, formatBalance } from "@/bot/utils/formatMessage";
 import { handleBotError } from "@/bot/utils/handleBotError";
 import { t } from "@/i18n";
-import type { LanguageCode } from "@shared/types/CoreTypes";
 
 export async function handleEnd(ctx: Context): Promise<void> {
   const telegramId = ctx.from?.id?.toString();
   if (!telegramId) return;
 
-  let lang: LanguageCode = "en";
   try {
     const settings = await getSettingsOrThrow(telegramId);
-    lang = settings.language as LanguageCode;
-
     const result = await endWorkday(telegramId);
 
     const startStr = formatTime(result.startTime, settings.timezone);
@@ -25,7 +21,7 @@ export async function handleEnd(ctx: Context): Promise<void> {
     const balanceEmoji = result.balanceMinutes >= 0 ? "🟢" : "🔴";
 
     await ctx.reply(
-      t("end.success", lang, {
+      t("end.success", "en", {
         workDate: result.workDate,
         startStr,
         endStr,
@@ -37,6 +33,6 @@ export async function handleEnd(ctx: Context): Promise<void> {
       { parse_mode: "Markdown" }
     );
   } catch (err) {
-    await handleBotError(ctx, err, lang);
+    await handleBotError(ctx, err);
   }
 }
