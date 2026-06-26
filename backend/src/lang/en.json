@@ -34,10 +34,10 @@
     "summary": "🗓 *Monthly summary*\n📆 Month: *{{month}}*\n\n📋 Workdays:  *{{workdaysCount}}*\n⏱ Required:  *{{requiredStr}}*\n✅ Worked:    *{{workedStr}}*\n{{balanceEmoji}} Balance:   *{{balanceStr}}*"
   },
   "settings": {
-    "display": "⚙️ *Your current settings*\n\n📋 Daily hours:  *{{dailyHoursStr}}*\n📅 Workdays:     *{{workdaysStr}}*\n🌍 Timezone:     *{{timezone}}*\n🗣 Language:     *{{languageLabel}}*"
+    "display": "⚙️ *Your current settings*\n\n📋 Daily hours:  *{{dailyHoursStr}}*\n📅 Workdays:     *{{workdaysStr}}*\n🌍 Timezone:     *{{timezone}}*"
   },
   "setup": {
-    "alreadyCompleted": "✅ *Setup is already complete.*\n\nCurrent settings:\n  Daily hours: {{dailyHoursStr}}\n  Workdays:    {{workdaysStr}}\n  Timezone:    {{timezone}}\n  Language:    {{languageLabel}}\n\nTo change your settings, use:\n/settings\\_edit",
+    "alreadyCompleted": "✅ *Setup is already complete.*\n\nCurrent settings:\n  Daily hours: {{dailyHoursStr}}\n  Workdays:    {{workdaysStr}}\n  Timezone:    {{timezone}}\n\nTo change your settings, use:\n/settings\\_edit",
     "complete": "✅ *Setup complete!*\n\n{{settings}}\n\nYou can now use /start to begin tracking your workday."
   },
   "settingsEdit": {

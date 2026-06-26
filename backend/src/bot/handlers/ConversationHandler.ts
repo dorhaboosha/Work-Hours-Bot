@@ -14,16 +14,15 @@ import { setEndHour, setStartAndEndHours, markAbsence } from "@/services/EditWor
 import { formatTime, formatMinutesAsDuration, formatBalance } from "@/bot/utils/formatMessage";
 import { t, formatWorkdays } from "@/i18n";
 import { handleBotError } from "@/bot/utils/handleBotError";
-import { LANGUAGE_LABELS } from "@shared/types/CoreTypes";
 import { decimalHoursToMinutes } from "@shared/utils/timeUtils";
-import type { LanguageCode, Weekday, AbsenceRecordType } from "@shared/types/CoreTypes";
+import type { Weekday, AbsenceRecordType } from "@shared/types/CoreTypes";
 
-// ── Setup conversation constants (always English — language not set yet) ──────
+// ── Setup conversation constants ───────────────────────────────────────────────
 
 const SETUP_ASK_HOURS = [
   "⚙️ *Let's set up your work schedule!*",
   "",
-  "*Step 1 of 4 — Daily hours*",
+  "*Step 1 of 3 — Daily hours*",
   "",
   "How many hours do you work per day?",
   "",
@@ -31,7 +30,7 @@ const SETUP_ASK_HOURS = [
 ].join("\n");
 
 const SETUP_CHOOSE_WORKDAYS = [
-  "*Step 2 of 4 — Workdays*",
+  "*Step 2 of 3 — Workdays*",
   "",
   "Choose your workdays:",
   "",
@@ -49,7 +48,7 @@ const SETUP_ASK_CUSTOM_WORKDAYS = [
 ].join("\n");
 
 const SETUP_CHOOSE_TIMEZONE = [
-  "*Step 3 of 4 — Timezone*",
+  "*Step 3 of 3 — Timezone*",
   "",
   "Choose your timezone:",
   "",
@@ -64,15 +63,6 @@ const SETUP_ASK_CUSTOM_TIMEZONE = [
   "Enter your timezone in IANA format:",
   "",
   "Example: `Asia/Jerusalem`",
-].join("\n");
-
-const SETUP_CHOOSE_LANGUAGE = [
-  "*Step 4 of 4 — Language*",
-  "",
-  "Choose your language:",
-  "",
-  "1. English",
-  "2. Hebrew",
 ].join("\n");
 
 const PREDEFINED_TIMEZONES = [
@@ -189,8 +179,7 @@ async function handleSetupStep(
       const choice = parseInt(text, 10);
       if (choice >= 1 && choice <= 4) {
         const timezone = PREDEFINED_TIMEZONES[choice - 1];
-        SessionStore.set(userId, { step: "setup:language", data: { ...session.data, timezone } });
-        await ctx.reply(SETUP_CHOOSE_LANGUAGE, { parse_mode: "Markdown" });
+        await completeSetup(ctx, userId, { ...session.data, timezone });
       } else if (text === "5") {
         SessionStore.set(userId, { step: "setup:timezone_custom", data: session.data });
         await ctx.reply(SETUP_ASK_CUSTOM_TIMEZONE, { parse_mode: "Markdown" });
@@ -205,45 +194,37 @@ async function handleSetupStep(
         await ctx.reply(SETUP_ASK_CUSTOM_TIMEZONE, { parse_mode: "Markdown" });
         return;
       }
-      SessionStore.set(userId, { step: "setup:language", data: { ...session.data, timezone: text } });
-      await ctx.reply(SETUP_CHOOSE_LANGUAGE, { parse_mode: "Markdown" });
+      await completeSetup(ctx, userId, { ...session.data, timezone: text });
       break;
     }
+  }
+}
 
-    case "setup:language": {
-      const language: LanguageCode = text === "2" ? "he" : "en";
-      SessionStore.clear(userId);
+/** Saves settings after the last setup step and sends the completion message. */
+async function completeSetup(
+  ctx: Context,
+  userId: string,
+  data: { hours?: number; workdays?: number[]; timezone?: string }
+): Promise<void> {
+  SessionStore.clear(userId);
+  try {
+    const settings = await setupSettings({
+      telegramId: userId,
+      dailyHoursOrMinutes: data.hours!,
+      workdays: data.workdays! as Weekday[],
+      timezone: data.timezone!,
+    });
 
-      try {
-        const { hours, workdays, timezone } = session.data;
-        const settings = await setupSettings({
-          telegramId: userId,
-          dailyHoursOrMinutes: hours!,
-          workdays: workdays! as Weekday[],
-          timezone: timezone!,
-          language,
-        });
+    const dailyHoursStr = formatMinutesAsDuration(settings.dailyRequiredMinutes);
+    const workdaysStr = formatWorkdays(settings.workdays as Weekday[], "en");
+    const settingsBlock = t("settings.display", "en", { dailyHoursStr, workdaysStr, timezone: settings.timezone });
 
-        const lang = settings.language as LanguageCode;
-        const dailyHoursStr = formatMinutesAsDuration(settings.dailyRequiredMinutes);
-        const workdaysStr = formatWorkdays(settings.workdays as Weekday[], lang);
-        const languageLabel = LANGUAGE_LABELS[lang];
-        const settingsBlock = t("settings.display", lang, {
-          dailyHoursStr,
-          workdaysStr,
-          timezone: settings.timezone,
-          languageLabel,
-        });
-
-        await ctx.reply(
-          t("setup.complete", lang, { settings: settingsBlock }),
-          { parse_mode: "Markdown" }
-        );
-      } catch (err) {
-        await handleBotError(ctx, err);
-      }
-      break;
-    }
+    await ctx.reply(
+      t("setup.complete", "en", { settings: settingsBlock }),
+      { parse_mode: "Markdown" }
+    );
+  } catch (err) {
+    await handleBotError(ctx, err);
   }
 }
 
@@ -255,10 +236,9 @@ async function handleSettingsEditStep(
   text: string,
   session: Session
 ): Promise<void> {
-  let lang: LanguageCode = "en";
+  const lang = "en";
   try {
-    const current = await getSettingsOrThrow(userId);
-    lang = current.language as LanguageCode;
+    await getSettingsOrThrow(userId);
   } catch (err) {
     SessionStore.clear(userId);
     await handleBotError(ctx, err);
@@ -358,15 +338,10 @@ async function handleSettingsEditStep(
     }
 
     case "settings_edit:language": {
-      const newLang: LanguageCode = text === "2" ? "he" : text === "1" ? "en" : lang;
-      if (text !== "1" && text !== "2") {
-        await ctx.reply(
-          "❌ " + t("settingsEdit.chooseLanguage", lang),
-          { parse_mode: "Markdown" }
-        );
-        return;
-      }
-      await applySettingsUpdate(ctx, userId, newLang, { language: newLang });
+      // Language selection removed in V1.1 — this step is no longer reachable.
+      // Will be removed entirely in task 3.2.
+      await ctx.reply("Language selection is no longer available.", { parse_mode: "Markdown" });
+      SessionStore.clear(userId);
       break;
     }
   }
@@ -376,25 +351,22 @@ async function handleSettingsEditStep(
 async function applySettingsUpdate(
   ctx: Context,
   userId: string,
-  lang: LanguageCode,
-  update: { dailyRequiredMinutes?: number; timezone?: string; workdays?: Weekday[]; language?: LanguageCode }
+  lang: string,
+  update: { dailyRequiredMinutes?: number; timezone?: string; workdays?: Weekday[] }
 ): Promise<void> {
   SessionStore.clear(userId);
   try {
     const updated = await updateSettings(userId, update);
-    const newLang = updated.language as LanguageCode;
     const dailyHoursStr = formatMinutesAsDuration(updated.dailyRequiredMinutes);
-    const workdaysStr = formatWorkdays(updated.workdays as Weekday[], newLang);
-    const languageLabel = LANGUAGE_LABELS[newLang];
-    const settingsBlock = t("settings.display", newLang, {
+    const workdaysStr = formatWorkdays(updated.workdays as Weekday[], "en");
+    const settingsBlock = t("settings.display", "en", {
       dailyHoursStr,
       workdaysStr,
       timezone: updated.timezone,
-      languageLabel,
     });
 
     await ctx.reply(
-      t("settingsEdit.updated", newLang, { settings: settingsBlock }),
+      t("settingsEdit.updated", "en", { settings: settingsBlock }),
       { parse_mode: "Markdown" }
     );
   } catch (err) {
@@ -410,10 +382,9 @@ async function handleEditStep(
   text: string,
   session: Session
 ): Promise<void> {
-  let lang: LanguageCode = "en";
+  const lang = "en";
   try {
-    const settings = await getSettingsOrThrow(userId);
-    lang = settings.language as LanguageCode;
+    await getSettingsOrThrow(userId);
   } catch (err) {
     SessionStore.clear(userId);
     await handleBotError(ctx, err);
@@ -566,7 +537,7 @@ export function startSetupFlow(ctx: Context, userId: string): Promise<void> {
 export async function startSettingsEditFlow(
   ctx: Context,
   userId: string,
-  lang: LanguageCode
+  lang: string
 ): Promise<void> {
   SessionStore.set(userId, { step: "settings_edit:choose_field", data: {} });
   await ctx.reply(t("settingsEdit.chooseField", lang), { parse_mode: "Markdown" });
