@@ -18,7 +18,7 @@ export async function handleStart(ctx: Context): Promise<void> {
     const durationStr = formatMinutesAsDuration(settings.dailyRequiredMinutes);
 
     await ctx.reply(
-      t("start.success", "en", { startStr, endStr, durationStr }),
+      t("start.success", { startStr, endStr, durationStr }),
       { parse_mode: "Markdown" }
     );
   } catch (err) {

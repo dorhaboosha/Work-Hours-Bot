@@ -17,7 +17,7 @@ export async function handleWeek(ctx: Context): Promise<void> {
     const balanceEmoji = summary.balanceMinutes >= 0 ? "🟢" : "🔴";
 
     await ctx.reply(
-      t("week.summary", "en", {
+      t("week.summary", {
         startDate: summary.startDate!,
         endDate: summary.endDate!,
         workdaysCount: summary.workdaysCount,

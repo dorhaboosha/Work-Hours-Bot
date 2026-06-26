@@ -9,7 +9,7 @@ export async function handleSettingsEdit(ctx: Context): Promise<void> {
 
   try {
     await getSettingsOrThrow(telegramId);
-    await startSettingsEditFlow(ctx, telegramId, "en");
+    await startSettingsEditFlow(ctx, telegramId);
   } catch (err) {
     await handleBotError(ctx, err);
   }

@@ -21,7 +21,7 @@ export async function handleEnd(ctx: Context): Promise<void> {
     const balanceEmoji = result.balanceMinutes >= 0 ? "🟢" : "🔴";
 
     await ctx.reply(
-      t("end.success", "en", {
+      t("end.success", {
         workDate: result.workDate,
         startStr,
         endStr,

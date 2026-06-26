@@ -28,21 +28,21 @@ export async function handleEdit(ctx: Context): Promise<void> {
     let prompt: string;
     switch (options.state) {
       case "OPEN_WORK_RECORD":
-        prompt = t("edit.openRecord", "en", { date: ddMm });
+        prompt = t("edit.openRecord", { date: ddMm });
         break;
       case "NO_RECORD":
-        prompt = t("edit.noRecord", "en", { date: ddMm });
+        prompt = t("edit.noRecord", { date: ddMm });
         break;
       case "CLOSED_WORK_RECORD":
-        prompt = t("edit.closedRecord", "en", { date: ddMm });
+        prompt = t("edit.closedRecord", { date: ddMm });
         break;
       case "ABSENCE_RECORD": {
         const recType = options.record?.recordType as DailyRecordType | undefined;
         const absenceLabel =
           recType && isAbsenceRecordType(recType)
-            ? t(`absenceType.${recType as AbsenceRecordType}`, "en")
+            ? t(`absenceType.${recType as AbsenceRecordType}`)
             : recType ?? "absence";
-        prompt = t("edit.absenceRecord", "en", { date: ddMm, absenceLabel });
+        prompt = t("edit.absenceRecord", { date: ddMm, absenceLabel });
         break;
       }
     }

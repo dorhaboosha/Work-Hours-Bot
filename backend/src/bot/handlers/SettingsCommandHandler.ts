@@ -12,10 +12,10 @@ export async function handleSettings(ctx: Context): Promise<void> {
   try {
     const settings = await getSettingsOrThrow(telegramId);
     const dailyHoursStr = formatMinutesAsDuration(settings.dailyRequiredMinutes);
-    const workdaysStr = formatWorkdays(settings.workdays as Weekday[], "en");
+    const workdaysStr = formatWorkdays(settings.workdays as Weekday[]);
 
     await ctx.reply(
-      t("settings.display", "en", { dailyHoursStr, workdaysStr, timezone: settings.timezone }),
+      t("settings.display", { dailyHoursStr, workdaysStr, timezone: settings.timezone }),
       { parse_mode: "Markdown" }
     );
   } catch (err) {

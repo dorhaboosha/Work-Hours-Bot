@@ -216,11 +216,11 @@ async function completeSetup(
     });
 
     const dailyHoursStr = formatMinutesAsDuration(settings.dailyRequiredMinutes);
-    const workdaysStr = formatWorkdays(settings.workdays as Weekday[], "en");
-    const settingsBlock = t("settings.display", "en", { dailyHoursStr, workdaysStr, timezone: settings.timezone });
+    const workdaysStr = formatWorkdays(settings.workdays as Weekday[]);
+    const settingsBlock = t("settings.display", { dailyHoursStr, workdaysStr, timezone: settings.timezone });
 
     await ctx.reply(
-      t("setup.complete", "en", { settings: settingsBlock }),
+      t("setup.complete", { settings: settingsBlock }),
       { parse_mode: "Markdown" }
     );
   } catch (err) {
@@ -236,7 +236,6 @@ async function handleSettingsEditStep(
   text: string,
   session: Session
 ): Promise<void> {
-  const lang = "en";
   try {
     await getSettingsOrThrow(userId);
   } catch (err) {
@@ -249,18 +248,15 @@ async function handleSettingsEditStep(
     case "settings_edit:choose_field": {
       if (text === "1") {
         SessionStore.set(userId, { step: "settings_edit:hours", data: {} });
-        await ctx.reply(t("settingsEdit.askHours", lang), { parse_mode: "Markdown" });
+        await ctx.reply(t("settingsEdit.askHours"), { parse_mode: "Markdown" });
       } else if (text === "2") {
         SessionStore.set(userId, { step: "settings_edit:workdays", data: {} });
-        await ctx.reply(t("settingsEdit.chooseWorkdays", lang), { parse_mode: "Markdown" });
+        await ctx.reply(t("settingsEdit.chooseWorkdays"), { parse_mode: "Markdown" });
       } else if (text === "3") {
         SessionStore.set(userId, { step: "settings_edit:timezone", data: {} });
-        await ctx.reply(t("settingsEdit.chooseTimezone", lang), { parse_mode: "Markdown" });
+        await ctx.reply(t("settingsEdit.chooseTimezone"), { parse_mode: "Markdown" });
       } else {
-        await ctx.reply(
-          "❌ " + t("settingsEdit.chooseField", lang),
-          { parse_mode: "Markdown" }
-        );
+        await ctx.reply("❌ " + t("settingsEdit.chooseField"), { parse_mode: "Markdown" });
       }
       break;
     }
@@ -268,30 +264,24 @@ async function handleSettingsEditStep(
     case "settings_edit:hours": {
       const hours = parseFloat(text);
       if (isNaN(hours) || hours <= 0) {
-        await ctx.reply(
-          "❌ " + t("settingsEdit.askHours", lang),
-          { parse_mode: "Markdown" }
-        );
+        await ctx.reply("❌ " + t("settingsEdit.askHours"), { parse_mode: "Markdown" });
         return;
       }
       const mins = hours >= 60 ? Math.round(hours) : decimalHoursToMinutes(hours);
-      await applySettingsUpdate(ctx, userId, lang, { dailyRequiredMinutes: mins });
+      await applySettingsUpdate(ctx, userId, { dailyRequiredMinutes: mins });
       break;
     }
 
     case "settings_edit:workdays": {
       if (text === "1") {
-        await applySettingsUpdate(ctx, userId, lang, { workdays: [0,1,2,3,4] as Weekday[] });
+        await applySettingsUpdate(ctx, userId, { workdays: [0,1,2,3,4] as Weekday[] });
       } else if (text === "2") {
-        await applySettingsUpdate(ctx, userId, lang, { workdays: [1,2,3,4,5] as Weekday[] });
+        await applySettingsUpdate(ctx, userId, { workdays: [1,2,3,4,5] as Weekday[] });
       } else if (text === "3") {
         SessionStore.set(userId, { step: "settings_edit:workdays_custom", data: {} });
-        await ctx.reply(t("settingsEdit.askCustomWorkdays", lang), { parse_mode: "Markdown" });
+        await ctx.reply(t("settingsEdit.askCustomWorkdays"), { parse_mode: "Markdown" });
       } else {
-        await ctx.reply(
-          "❌ " + t("settingsEdit.chooseWorkdays", lang),
-          { parse_mode: "Markdown" }
-        );
+        await ctx.reply("❌ " + t("settingsEdit.chooseWorkdays"), { parse_mode: "Markdown" });
       }
       break;
     }
@@ -299,41 +289,34 @@ async function handleSettingsEditStep(
     case "settings_edit:workdays_custom": {
       const workdays = parseWorkdayList(text);
       if (workdays === null) {
-        await ctx.reply(
-          "❌ " + t("settingsEdit.askCustomWorkdays", lang),
-          { parse_mode: "Markdown" }
-        );
+        await ctx.reply("❌ " + t("settingsEdit.askCustomWorkdays"), { parse_mode: "Markdown" });
         return;
       }
-      await applySettingsUpdate(ctx, userId, lang, { workdays: workdays as Weekday[] });
+      await applySettingsUpdate(ctx, userId, { workdays: workdays as Weekday[] });
       break;
     }
 
     case "settings_edit:timezone": {
       const choice = parseInt(text, 10);
       if (choice >= 1 && choice <= 4) {
-        await applySettingsUpdate(ctx, userId, lang, { timezone: PREDEFINED_TIMEZONES[choice - 1] });
+        await applySettingsUpdate(ctx, userId, { timezone: PREDEFINED_TIMEZONES[choice - 1] });
       } else if (text === "5") {
         SessionStore.set(userId, { step: "settings_edit:timezone_custom", data: {} });
-        await ctx.reply(t("settingsEdit.askCustomTimezone", lang), { parse_mode: "Markdown" });
+        await ctx.reply(t("settingsEdit.askCustomTimezone"), { parse_mode: "Markdown" });
       } else {
-        await ctx.reply(
-          "❌ " + t("settingsEdit.chooseTimezone", lang),
-          { parse_mode: "Markdown" }
-        );
+        await ctx.reply("❌ " + t("settingsEdit.chooseTimezone"), { parse_mode: "Markdown" });
       }
       break;
     }
 
     case "settings_edit:timezone_custom": {
       if (!text) {
-        await ctx.reply(t("settingsEdit.askCustomTimezone", lang), { parse_mode: "Markdown" });
+        await ctx.reply(t("settingsEdit.askCustomTimezone"), { parse_mode: "Markdown" });
         return;
       }
-      await applySettingsUpdate(ctx, userId, lang, { timezone: text });
+      await applySettingsUpdate(ctx, userId, { timezone: text });
       break;
     }
-
   }
 }
 
@@ -341,26 +324,18 @@ async function handleSettingsEditStep(
 async function applySettingsUpdate(
   ctx: Context,
   userId: string,
-  lang: string,
   update: { dailyRequiredMinutes?: number; timezone?: string; workdays?: Weekday[] }
 ): Promise<void> {
   SessionStore.clear(userId);
   try {
     const updated = await updateSettings(userId, update);
     const dailyHoursStr = formatMinutesAsDuration(updated.dailyRequiredMinutes);
-    const workdaysStr = formatWorkdays(updated.workdays as Weekday[], "en");
-    const settingsBlock = t("settings.display", "en", {
-      dailyHoursStr,
-      workdaysStr,
-      timezone: updated.timezone,
-    });
+    const workdaysStr = formatWorkdays(updated.workdays as Weekday[]);
+    const settingsBlock = t("settings.display", { dailyHoursStr, workdaysStr, timezone: updated.timezone });
 
-    await ctx.reply(
-      t("settingsEdit.updated", "en", { settings: settingsBlock }),
-      { parse_mode: "Markdown" }
-    );
+    await ctx.reply(t("settingsEdit.updated", { settings: settingsBlock }), { parse_mode: "Markdown" });
   } catch (err) {
-    await handleBotError(ctx, err, lang);
+    await handleBotError(ctx, err);
   }
 }
 
@@ -372,7 +347,6 @@ async function handleEditStep(
   text: string,
   session: Session
 ): Promise<void> {
-  const lang = "en";
   try {
     await getSettingsOrThrow(userId);
   } catch (err) {
@@ -391,28 +365,25 @@ async function handleEditStep(
 
       if (!action) {
         const maxChoice = Object.keys(actionMap).length;
-        await ctx.reply(
-          `❌ Please choose a number between 1 and ${maxChoice}.`,
-          { parse_mode: "Markdown" }
-        );
+        await ctx.reply(`❌ Please choose a number between 1 and ${maxChoice}.`, { parse_mode: "Markdown" });
         return;
       }
 
       if (action === "CANCEL") {
         SessionStore.clear(userId);
-        await ctx.reply(t("edit.cancelled", lang), { parse_mode: "Markdown" });
+        await ctx.reply(t("edit.cancelled"), { parse_mode: "Markdown" });
         return;
       }
 
       if (action === "SET_END_HOUR") {
         SessionStore.set(userId, { step: "edit:set_end_hour", data: { ddMm } });
-        await ctx.reply(t("edit.promptEndHour", lang), { parse_mode: "Markdown" });
+        await ctx.reply(t("edit.promptEndHour"), { parse_mode: "Markdown" });
       } else if (action === "SET_START_AND_END") {
         SessionStore.set(userId, { step: "edit:set_start_end", data: { ddMm } });
-        await ctx.reply(t("edit.promptStartAndEndHours", lang), { parse_mode: "Markdown" });
+        await ctx.reply(t("edit.promptStartAndEndHours"), { parse_mode: "Markdown" });
       } else if (action === "MARK_ABSENCE") {
         SessionStore.set(userId, { step: "edit:choose_absence", data: { ddMm } });
-        await ctx.reply(t("edit.absenceTypeList", lang), { parse_mode: "Markdown" });
+        await ctx.reply(t("edit.absenceTypeList"), { parse_mode: "Markdown" });
       }
       break;
     }
@@ -422,10 +393,7 @@ async function handleEditStep(
       if (!ddMm) { SessionStore.clear(userId); return; }
 
       if (!HH_MM_RE.test(text)) {
-        await ctx.reply(
-          "❌ " + t("edit.promptEndHour", lang),
-          { parse_mode: "Markdown" }
-        );
+        await ctx.reply("❌ " + t("edit.promptEndHour"), { parse_mode: "Markdown" });
         return;
       }
 
@@ -439,11 +407,11 @@ async function handleEditStep(
         const balanceStr = formatBalance(result.balanceMinutes);
 
         await ctx.reply(
-          t("edit.endHourSaved", lang, { date: ddMm, startStr, endStr, workedStr, balanceStr }),
+          t("edit.endHourSaved", { date: ddMm, startStr, endStr, workedStr, balanceStr }),
           { parse_mode: "Markdown" }
         );
       } catch (err) {
-        await handleBotError(ctx, err, lang);
+        await handleBotError(ctx, err);
       }
       break;
     }
@@ -454,10 +422,7 @@ async function handleEditStep(
 
       const match = HH_MM_RANGE_RE.exec(text);
       if (!match) {
-        await ctx.reply(
-          "❌ " + t("edit.promptStartAndEndHours", lang),
-          { parse_mode: "Markdown" }
-        );
+        await ctx.reply("❌ " + t("edit.promptStartAndEndHours"), { parse_mode: "Markdown" });
         return;
       }
 
@@ -472,11 +437,11 @@ async function handleEditStep(
         const balanceStr = formatBalance(result.balanceMinutes);
 
         await ctx.reply(
-          t("edit.startEndSaved", lang, { date: ddMm, startStr, endStr, workedStr, balanceStr }),
+          t("edit.startEndSaved", { date: ddMm, startStr, endStr, workedStr, balanceStr }),
           { parse_mode: "Markdown" }
         );
       } catch (err) {
-        await handleBotError(ctx, err, lang);
+        await handleBotError(ctx, err);
       }
       break;
     }
@@ -487,10 +452,7 @@ async function handleEditStep(
 
       const idx = parseInt(text, 10);
       if (isNaN(idx) || idx < 1 || idx > 6) {
-        await ctx.reply(
-          "❌ " + t("edit.absenceTypeList", lang),
-          { parse_mode: "Markdown" }
-        );
+        await ctx.reply("❌ " + t("edit.absenceTypeList"), { parse_mode: "Markdown" });
         return;
       }
 
@@ -499,16 +461,16 @@ async function handleEditStep(
       try {
         const settings = await getSettingsOrThrow(userId);
         const result = await markAbsence(userId, ddMm, absenceType);
-        const absenceLabel = t(`absenceType.${absenceType}`, lang);
+        const absenceLabel = t(`absenceType.${absenceType}`);
         const creditedStr = formatMinutesAsDuration(result.workedMinutes);
         const balanceStr = formatBalance(result.balanceMinutes);
 
         await ctx.reply(
-          t("edit.absenceSaved", lang, { date: ddMm, absenceLabel, creditedStr, balanceStr }),
+          t("edit.absenceSaved", { date: ddMm, absenceLabel, creditedStr, balanceStr }),
           { parse_mode: "Markdown" }
         );
       } catch (err) {
-        await handleBotError(ctx, err, lang);
+        await handleBotError(ctx, err);
       }
       break;
     }
@@ -524,13 +486,9 @@ export function startSetupFlow(ctx: Context, userId: string): Promise<void> {
 
 // ── Exported starter for /settings_edit (called by SettingsEditCommandHandler) ─
 
-export async function startSettingsEditFlow(
-  ctx: Context,
-  userId: string,
-  lang: string
-): Promise<void> {
+export async function startSettingsEditFlow(ctx: Context, userId: string): Promise<void> {
   SessionStore.set(userId, { step: "settings_edit:choose_field", data: {} });
-  await ctx.reply(t("settingsEdit.chooseField", lang), { parse_mode: "Markdown" });
+  await ctx.reply(t("settingsEdit.chooseField"), { parse_mode: "Markdown" });
 }
 
 // ── Exported starter for /edit (called by EditCommandHandler) ─────────────────

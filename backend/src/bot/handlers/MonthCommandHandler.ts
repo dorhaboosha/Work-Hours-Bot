@@ -17,7 +17,7 @@ export async function handleMonth(ctx: Context): Promise<void> {
     const balanceEmoji = summary.balanceMinutes >= 0 ? "🟢" : "🔴";
 
     await ctx.reply(
-      t("month.summary", "en", {
+      t("month.summary", {
         month: summary.month!,
         workdaysCount: summary.workdaysCount,
         requiredStr,

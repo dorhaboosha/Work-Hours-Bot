@@ -13,14 +13,10 @@ export async function handleSetup(ctx: Context): Promise<void> {
 
   if (existing) {
     const dailyHoursStr = formatMinutesAsDuration(existing.dailyRequiredMinutes);
-    const workdaysStr = formatWorkdays(existing.workdays as Weekday[], "en");
+    const workdaysStr = formatWorkdays(existing.workdays as Weekday[]);
 
     await ctx.reply(
-      t("setup.alreadyCompleted", "en", {
-        dailyHoursStr,
-        workdaysStr,
-        timezone: existing.timezone,
-      }),
+      t("setup.alreadyCompleted", { dailyHoursStr, workdaysStr, timezone: existing.timezone }),
       { parse_mode: "Markdown" }
     );
     return;

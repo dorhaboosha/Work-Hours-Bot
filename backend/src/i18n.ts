@@ -21,18 +21,13 @@ function interpolate(template: string, vars: Record<string, unknown>): string {
   );
 }
 
-/**
- * Returns the English label for `key`, with optional variable interpolation.
- * The `lang` parameter is kept for call-site compatibility during cleanup (task 3.7).
- */
-export function t(key: string, lang: string, vars?: Record<string, unknown>): string {
+/** Returns the English label for `key`, with optional variable interpolation. */
+export function t(key: string, vars?: Record<string, unknown>): string {
   const template = resolve(key);
   return vars ? interpolate(template, vars) : template;
 }
 
-/**
- * Formats an array of weekday numbers as a comma-separated English string.
- */
-export function formatWorkdays(workdays: Weekday[], lang: string): string {
-  return workdays.map((d) => t(`weekday.${d}`, lang)).join(", ");
+/** Formats an array of weekday numbers as a comma-separated English string. */
+export function formatWorkdays(workdays: Weekday[]): string {
+  return workdays.map((d) => t(`weekday.${d}`)).join(", ");
 }

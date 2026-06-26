@@ -21,10 +21,10 @@ export async function handleStatus(ctx: Context): Promise<void> {
     const balanceStr = formatBalance(status.workedMinutesSoFar - settings.dailyRequiredMinutes);
 
     const goalReached = status.remainingMinutes === 0;
-    const hint = t(goalReached ? "status.hintGoalReached" : "status.hint", "en");
+    const hint = t(goalReached ? "status.hintGoalReached" : "status.hint");
 
     await ctx.reply(
-      t("status.active", "en", {
+      t("status.active", {
         workDate: status.workDate,
         startStr,
         endStr,
