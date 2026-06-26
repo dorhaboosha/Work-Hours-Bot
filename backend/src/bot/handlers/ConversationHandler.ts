@@ -256,9 +256,6 @@ async function handleSettingsEditStep(
       } else if (text === "3") {
         SessionStore.set(userId, { step: "settings_edit:timezone", data: {} });
         await ctx.reply(t("settingsEdit.chooseTimezone", lang), { parse_mode: "Markdown" });
-      } else if (text === "4") {
-        SessionStore.set(userId, { step: "settings_edit:language", data: {} });
-        await ctx.reply(t("settingsEdit.chooseLanguage", lang), { parse_mode: "Markdown" });
       } else {
         await ctx.reply(
           "❌ " + t("settingsEdit.chooseField", lang),
@@ -337,13 +334,6 @@ async function handleSettingsEditStep(
       break;
     }
 
-    case "settings_edit:language": {
-      // Language selection removed in V1.1 — this step is no longer reachable.
-      // Will be removed entirely in task 3.2.
-      await ctx.reply("Language selection is no longer available.", { parse_mode: "Markdown" });
-      SessionStore.clear(userId);
-      break;
-    }
   }
 }
 

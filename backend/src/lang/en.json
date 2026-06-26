@@ -41,13 +41,12 @@
     "complete": "✅ *Setup complete!*\n\n{{settings}}\n\nYou can now use /start to begin tracking your workday."
   },
   "settingsEdit": {
-    "chooseField": "What do you want to edit?\n\n1. Daily required hours\n2. Workdays\n3. Timezone\n4. Language",
+    "chooseField": "What do you want to edit?\n\n1. Daily required hours\n2. Workdays\n3. Timezone",
     "askHours": "Enter new daily required hours:\n\nExample: `8.8`",
     "chooseWorkdays": "Choose workdays:\n\n1. Sunday–Thursday\n2. Monday–Friday\n3. Custom",
     "askCustomWorkdays": "Enter workdays as comma-separated numbers:\n\n0=Sunday, 1=Monday, 2=Tuesday, 3=Wednesday, 4=Thursday, 5=Friday, 6=Saturday\n\nExample: `0,1,2,3,4`",
     "chooseTimezone": "Choose timezone:\n\n1. Asia/Jerusalem\n2. Europe/London\n3. Europe/Berlin\n4. America/New_York\n5. Custom (IANA format)",
     "askCustomTimezone": "Enter timezone in IANA format:\n\nExample: `Asia/Jerusalem`",
-    "chooseLanguage": "Choose language:\n\n1. English\n2. Hebrew",
     "updated": "✅ *Settings updated.*\n\n{{settings}}"
   },
   "help": "📖 *WorkHours Bot — Available commands*\n\n/start          — Start today's workday\n/status         — Show today's active status\n/end            — End today's active workday\n/edit dd-mm     — Edit or fix a specific date\n/week           — Show current week summary\n/month          — Show current month summary\n/settings       — Show current settings\n/settings\\_edit — Edit settings\n/help           — Show this message",
