@@ -1,36 +1,38 @@
-import i18next from "i18next";
-import type { Weekday } from "@shared/types/CoreTypes";
 import botLabels from "@/lang/botLabels.json";
-import he from "@/lang/he.json";
+import type { Weekday } from "@shared/types/CoreTypes";
 
-const i18n = i18next.createInstance();
+type Labels = Record<string, unknown>;
 
-i18n.init({
-  resources: {
-    en: { translation: botLabels },
-    he: { translation: he },
-  },
-  fallbackLng: "en",
-  interpolation: {
-    escapeValue: false,
-  },
-});
+/** Resolves a dot-notation key (e.g. "edit.openRecord") against the labels object. */
+function resolve(key: string): string {
+  const parts = key.split(".");
+  let node: unknown = botLabels;
+  for (const part of parts) {
+    if (typeof node !== "object" || node === null) return key;
+    node = (node as Labels)[part];
+  }
+  return typeof node === "string" ? node : key;
+}
 
-/**
- * Returns a label string for the given key.
- * Interpolation variables are passed as `vars` (matching `{{varName}}` placeholders in JSON).
- * `lang` is kept as a parameter for compatibility during the cleanup; it will always be "en" in V1.1.
- */
-export function t(key: string, lang: string, vars?: Record<string, unknown>): string {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return (i18n.t as any)(key, { lng: lang, ...vars });
+/** Replaces {{varName}} placeholders with values from `vars`. */
+function interpolate(template: string, vars: Record<string, unknown>): string {
+  return template.replace(/\{\{(\w+)\}\}/g, (_, name: string) =>
+    String(vars[name] ?? `{{${name}}}`)
+  );
 }
 
 /**
- * Formats an array of weekday numbers into a comma-separated English string.
+ * Returns the English label for `key`, with optional variable interpolation.
+ * The `lang` parameter is kept for call-site compatibility during cleanup (task 3.7).
+ */
+export function t(key: string, lang: string, vars?: Record<string, unknown>): string {
+  const template = resolve(key);
+  return vars ? interpolate(template, vars) : template;
+}
+
+/**
+ * Formats an array of weekday numbers as a comma-separated English string.
  */
 export function formatWorkdays(workdays: Weekday[], lang: string): string {
   return workdays.map((d) => t(`weekday.${d}`, lang)).join(", ");
 }
-
-export { i18n };
