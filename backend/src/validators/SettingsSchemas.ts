@@ -6,10 +6,6 @@ const weekdaySchema = z
   .min(0, "Weekday must be between 0 (Sunday) and 6 (Saturday)")
   .max(6, "Weekday must be between 0 (Sunday) and 6 (Saturday)");
 
-const languageSchema = z.enum(["en", "he"], {
-  errorMap: () => ({ message: 'language must be "en" or "he"' }),
-});
-
 const dailyRequiredMinutesSchema = z
   .number()
   .int("dailyRequiredMinutes must be an integer")
@@ -25,7 +21,6 @@ export const SetupSettingsSchema = z.object({
   dailyRequiredMinutes: dailyRequiredMinutesSchema,
   timezone: z.string().min(1, "timezone is required"),
   workdays: workdaysSchema,
-  language: languageSchema,
 });
 
 export type SetupSettingsInput = z.infer<typeof SetupSettingsSchema>;
@@ -36,14 +31,12 @@ export const UpdateSettingsSchema = z
     dailyRequiredMinutes: dailyRequiredMinutesSchema.optional(),
     timezone: z.string().min(1, "timezone must not be empty").optional(),
     workdays: workdaysSchema.optional(),
-    language: languageSchema.optional(),
   })
   .refine(
     (data) =>
       data.dailyRequiredMinutes !== undefined ||
       data.timezone !== undefined ||
-      data.workdays !== undefined ||
-      data.language !== undefined,
+      data.workdays !== undefined,
     { message: "At least one field must be provided" }
   );
 
