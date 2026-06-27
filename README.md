@@ -144,3 +144,28 @@ Set these on the Render Web Service (see also `backend/.env.example` for local d
 | `PORT` | No | Injected automatically by Render. Do not set manually in production. |
 
 Locally, copy `backend/.env.example` to `backend/.env` and fill in `DATABASE_URL` and `TELEGRAM_BOT_TOKEN`. `PORT` defaults to `3000` for local dev.
+
+## Scripts
+
+All commands run from the repository root unless noted. The backend lives in the `backend` workspace.
+
+| Command | Description |
+|---|---|
+| `npm run dev` | Start the bot in development mode (hot reload via `ts-node-dev`) |
+| `npm run build -w backend` | Generate Prisma client, compile TypeScript, and rewrite path aliases |
+| `npm start -w backend` | Run the compiled production server (`dist/backend/src/server.js`) |
+| `npm test -w backend` | Run backend unit tests (Node.js test runner) |
+
+Additional backend scripts (run from `backend/` or with `-w backend`):
+
+| Command | Description |
+|---|---|
+| `npm run migrate:deploy -w backend` | Apply pending Prisma migrations (production / Render) |
+
+## Contributing
+
+Issues and pull requests are welcome. For local development, follow [Getting Started](#getting-started). Run `npm test -w backend` before submitting changes.
+
+## License
+
+This project is licensed under the [MIT License](LICENSE).
