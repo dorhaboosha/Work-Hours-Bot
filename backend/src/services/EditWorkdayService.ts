@@ -150,6 +150,13 @@ export async function setEndHour(
   }
 
   const endTimeUtc = localTimeToUtc(workDateStr, endTimeHhMm, settings.timezone);
+  if (endTimeUtc.getTime() <= record!.startTime.getTime()) {
+    throw new AppError(
+      "INVALID_TIME_RANGE",
+      "endTime must be after startTime"
+    );
+  }
+
   const workedMinutes = calcWorkedMinutes(record!.startTime, endTimeUtc);
 
   const updated = await updateDailyRecord(record!.id, { endTime: endTimeUtc, workedMinutes });
