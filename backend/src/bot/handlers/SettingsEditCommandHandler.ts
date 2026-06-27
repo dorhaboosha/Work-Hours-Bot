@@ -1,7 +1,7 @@
 import type { Context } from "telegraf";
 import { getSettingsOrThrow } from "@/services/SettingsService";
 import { handleBotError } from "@/bot/utils/handleBotError";
-import { startSettingsEditFlow } from "@/bot/handlers/ConversationHandler";
+import { startSettingsEditFlow } from "@/bot/flows/settingsEditFlow";
 
 export async function handleSettingsEdit(ctx: Context): Promise<void> {
   const telegramId = ctx.from?.id?.toString();
