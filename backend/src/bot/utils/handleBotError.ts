@@ -45,5 +45,5 @@ export async function handleBotError(ctx: Context, err: unknown): Promise<void> 
   }
 
   console.error("Unhandled bot error:", err);
-  await ctx.reply("❌ An unexpected error occurred. Please try again later.");
+  await ctx.reply(t("errors.unknown"), { parse_mode: "Markdown" });
 }

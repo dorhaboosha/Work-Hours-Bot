@@ -75,6 +75,7 @@
     "endHourSaved": "✅ *End hour saved*\n\n📅 Date:    *{{date}}*\n🕐 Start:   *{{startStr}}*\n🏁 End:     *{{endStr}}*\n✅ Worked:  *{{workedStr}}*\n⚖️ Balance: *{{balanceStr}}*",
     "startEndSaved": "✅ *Start and end hours saved*\n\n📅 Date:    *{{date}}*\n🕐 Start:   *{{startStr}}*\n🏁 End:     *{{endStr}}*\n✅ Worked:  *{{workedStr}}*\n⚖️ Balance: *{{balanceStr}}*",
     "absenceSaved": "✅ *{{absenceLabel}} saved*\n\n📅 Date:       *{{date}}*\n⏱ Counted as: *{{creditedStr}}*\n⚖️ Balance:    *{{balanceStr}}*",
+    "usageHint": "Usage: `/edit dd-mm` (e.g. `/edit 12-06`)",
     "cancelled": "↩️ Cancelled.",
     "invalidChoice": "❌ Please choose a number between 1 and {{maxChoice}}.",
     "invalidPromptEndHour": "❌ Enter end time:\n\nExample: 17:30",

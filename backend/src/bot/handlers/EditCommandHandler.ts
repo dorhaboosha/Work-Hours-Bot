@@ -5,9 +5,7 @@ import { t } from "@/i18n";
 import { startEditFlow } from "@/bot/handlers/ConversationHandler";
 import type { AbsenceRecordType, DailyRecordType } from "@shared/types/CoreTypes";
 import { isAbsenceRecordType } from "@shared/utils/recordTypeUtils";
-
-/** Matches dd-mm format */
-const DD_MM_RE = /^\d{2}-\d{2}$/;
+import { DD_MM_RE } from "@/constants/timeFormats";
 
 export async function handleEdit(ctx: Context): Promise<void> {
   const telegramId = ctx.from?.id?.toString();
@@ -18,7 +16,7 @@ export async function handleEdit(ctx: Context): Promise<void> {
 
   try {
     if (args.length === 0 || !DD_MM_RE.test(args[0])) {
-      await ctx.reply("Usage: `/edit dd-mm` (e.g. `/edit 12-06`)", { parse_mode: "Markdown" });
+      await ctx.reply(t("edit.usageHint"), { parse_mode: "Markdown" });
       return;
     }
 
