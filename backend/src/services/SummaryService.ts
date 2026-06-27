@@ -244,6 +244,53 @@ function enrichWithOpenDay(
   );
 }
 
+// ── Shared pipeline ───────────────────────────────────────────────────────────
+
+interface SummaryCore {
+  workdaysCount: number;
+  requiredMinutes: number;
+  workedMinutes: number;
+  balanceMinutes: number;
+}
+
+/**
+ * Runs the full summary pipeline for a single user:
+ *   settings fetch → assertNoPreviousOpenRecord → windowBuilder
+ *   → listRecordsByRange → enrichWithOpenDay → aggregateSummary
+ *
+ * The generic `W` carries the window-specific fields (e.g. `startDate`/`endDate`
+ * for a week window, `month` for a month window) through to the return type,
+ * so callers can access them without extra lookups.
+ */
+async function buildSummary<W extends { workdayDates: string[] }>(
+  telegramId: string,
+  windowBuilder: (workdays: Weekday[], timezone: string) => W
+): Promise<W & SummaryCore> {
+  const settings = await getSettingsOrThrow(telegramId);
+  await assertNoPreviousOpenRecord(telegramId, settings.timezone);
+
+  const win = windowBuilder(settings.workdays as Weekday[], settings.timezone);
+
+  const rawRecords =
+    win.workdayDates.length > 0
+      ? await listRecordsByRange(
+          telegramId,
+          localDateToUtcMidnight(win.workdayDates[0]),
+          localDateToUtcMidnight(win.workdayDates[win.workdayDates.length - 1])
+        )
+      : [];
+
+  const records = enrichWithOpenDay(rawRecords, win.workdayDates, settings.timezone);
+  const totals = aggregateSummary(
+    win.workdayDates,
+    records,
+    settings.dailyRequiredMinutes,
+    settings.timezone
+  );
+
+  return { ...win, ...totals };
+}
+
 // ── Public service functions ──────────────────────────────────────────────────
 
 /**
@@ -251,43 +298,9 @@ function enrichWithOpenDay(
  * Throws PREVIOUS_RECORD_STILL_OPEN if a prior-day record is still open.
  */
 export async function getWeekSummary(telegramId: string): Promise<WorkSummary> {
-  const settings = await getSettingsOrThrow(telegramId);
-  await assertNoPreviousOpenRecord(telegramId, settings.timezone);
-  const workdays = settings.workdays as Weekday[];
-  const window = getWeekWindow(workdays, settings.timezone);
-
-  const rawRecords =
-    window.workdayDates.length > 0
-      ? await listRecordsByRange(
-          telegramId,
-          localDateToUtcMidnight(window.workdayDates[0]),
-          localDateToUtcMidnight(window.workdayDates[window.workdayDates.length - 1])
-        )
-      : [];
-
-  const records = enrichWithOpenDay(
-    rawRecords,
-    window.workdayDates,
-    settings.timezone
-  );
-
-  const { workdaysCount, requiredMinutes, workedMinutes, balanceMinutes } =
-    aggregateSummary(
-      window.workdayDates,
-      records,
-      settings.dailyRequiredMinutes,
-      settings.timezone
-    );
-
-  return {
-    period: "week",
-    startDate: window.startDate,
-    endDate: window.endDate,
-    workdaysCount,
-    requiredMinutes,
-    workedMinutes,
-    balanceMinutes,
-  };
+  const { startDate, endDate, workdaysCount, requiredMinutes, workedMinutes, balanceMinutes } =
+    await buildSummary(telegramId, getWeekWindow);
+  return { period: "week", startDate, endDate, workdaysCount, requiredMinutes, workedMinutes, balanceMinutes };
 }
 
 /**
@@ -295,40 +308,7 @@ export async function getWeekSummary(telegramId: string): Promise<WorkSummary> {
  * Throws PREVIOUS_RECORD_STILL_OPEN if a prior-day record is still open.
  */
 export async function getMonthSummary(telegramId: string): Promise<WorkSummary> {
-  const settings = await getSettingsOrThrow(telegramId);
-  await assertNoPreviousOpenRecord(telegramId, settings.timezone);
-  const workdays = settings.workdays as Weekday[];
-  const window = getMonthWindow(workdays, settings.timezone);
-
-  const rawRecords =
-    window.workdayDates.length > 0
-      ? await listRecordsByRange(
-          telegramId,
-          localDateToUtcMidnight(window.workdayDates[0]),
-          localDateToUtcMidnight(window.workdayDates[window.workdayDates.length - 1])
-        )
-      : [];
-
-  const records = enrichWithOpenDay(
-    rawRecords,
-    window.workdayDates,
-    settings.timezone
-  );
-
-  const { workdaysCount, requiredMinutes, workedMinutes, balanceMinutes } =
-    aggregateSummary(
-      window.workdayDates,
-      records,
-      settings.dailyRequiredMinutes,
-      settings.timezone
-    );
-
-  return {
-    period: "month",
-    month: window.month,
-    workdaysCount,
-    requiredMinutes,
-    workedMinutes,
-    balanceMinutes,
-  };
+  const { month, workdaysCount, requiredMinutes, workedMinutes, balanceMinutes } =
+    await buildSummary(telegramId, getMonthWindow);
+  return { period: "month", month, workdaysCount, requiredMinutes, workedMinutes, balanceMinutes };
 }
