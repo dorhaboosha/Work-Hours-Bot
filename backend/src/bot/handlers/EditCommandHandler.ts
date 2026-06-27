@@ -2,7 +2,7 @@ import type { Context } from "telegraf";
 import { getEditDayOptions } from "@/services/EditWorkdayService";
 import { handleBotError } from "@/bot/utils/handleBotError";
 import { t } from "@/i18n";
-import { startEditFlow } from "@/bot/handlers/ConversationHandler";
+import { startEditFlow } from "@/bot/flows/editDayFlow";
 import type { AbsenceRecordType, DailyRecordType } from "@shared/types/CoreTypes";
 import { isAbsenceRecordType } from "@shared/utils/recordTypeUtils";
 import { DD_MM_RE } from "@/constants/timeFormats";
