@@ -7,13 +7,7 @@ import { t, formatWorkdays } from "@/i18n";
 import { handleBotError } from "@/bot/utils/handleBotError";
 import type { Weekday } from "@shared/types/CoreTypes";
 import { PREDEFINED_TIMEZONES } from "@/constants/timezones";
-
-function parseWorkdayList(raw: string): Weekday[] | null {
-  const parts = raw.split(",").map((s) => parseInt(s.trim(), 10));
-  if (parts.length === 0) return null;
-  if (parts.some((n) => isNaN(n) || n < 0 || n > 6)) return null;
-  return parts as Weekday[];
-}
+import { parseWorkdayList } from "@/bot/utils/timeInputParser";
 
 export async function handleSetupStep(
   ctx: Context,
