@@ -162,14 +162,19 @@ describe("SummaryService", async () => {
       minutesBetween: realDateUtils.minutesBetween,
     });
 
+    // ── Load dateRangeUtils (no stubs needed — pure date math) ───────────────
+    const rangeKey = require.resolve(path.join(__dirname, "../utils/dateRangeUtils"));
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const rangeUtils = require(rangeKey) as typeof import("../utils/dateRangeUtils");
+    getWeekWindow = rangeUtils.getWeekWindow;
+    getMonthWindow = rangeUtils.getMonthWindow;
+
     // ── Load SummaryService fresh after all stubs are in place ────────────────
     const svcKey = require.resolve(path.join(__dirname, "./SummaryService"));
     delete require.cache[svcKey];
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const svc = require(svcKey) as typeof import("./SummaryService");
     aggregateSummary = svc.aggregateSummary;
-    getWeekWindow = svc.getWeekWindow;
-    getMonthWindow = svc.getMonthWindow;
     getWeekSummary = svc.getWeekSummary;
     getMonthSummary = svc.getMonthSummary;
   });
