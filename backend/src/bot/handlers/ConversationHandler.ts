@@ -16,6 +16,10 @@ import { t, formatWorkdays } from "@/i18n";
 import { handleBotError } from "@/bot/utils/handleBotError";
 import { decimalHoursToMinutes } from "@shared/utils/timeUtils";
 import type { Weekday, AbsenceRecordType } from "@shared/types/CoreTypes";
+import { PREDEFINED_TIMEZONES } from "@/constants/timezones";
+import { HH_MM_RE, HH_MM_RANGE_RE } from "@/constants/timeFormats";
+import { ABSENCE_TYPES } from "@/constants/absenceTypes";
+import { type EditAction, EDIT_ACTION_MAP } from "@/constants/editActions";
 
 // ── Setup conversation constants ───────────────────────────────────────────────
 
@@ -65,13 +69,6 @@ const SETUP_ASK_CUSTOM_TIMEZONE = [
   "Example: `Asia/Jerusalem`",
 ].join("\n");
 
-const PREDEFINED_TIMEZONES = [
-  "Asia/Jerusalem",
-  "Europe/London",
-  "Europe/Berlin",
-  "America/New_York",
-];
-
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function parseWorkdayList(raw: string): Weekday[] | null {
@@ -80,27 +77,6 @@ function parseWorkdayList(raw: string): Weekday[] | null {
   if (parts.some((n) => isNaN(n) || n < 0 || n > 6)) return null;
   return parts as Weekday[];
 }
-
-const HH_MM_RE = /^\d{2}:\d{2}$/;
-const HH_MM_RANGE_RE = /^(\d{2}:\d{2})-(\d{2}:\d{2})$/;
-
-const ABSENCE_TYPES: AbsenceRecordType[] = [
-  "SICK",
-  "VACATION",
-  "HOLIDAY",
-  "HOLIDAY_EVE",
-  "UNPAID_ABSENCE",
-  "ELECTION",
-];
-
-/** Action choices indexed by EditRecordState */
-type EditAction = "SET_END_HOUR" | "SET_START_AND_END" | "MARK_ABSENCE" | "CANCEL";
-const EDIT_ACTION_MAP: Record<string, Record<string, EditAction>> = {
-  OPEN_WORK_RECORD:   { "1": "SET_END_HOUR", "2": "SET_START_AND_END", "3": "MARK_ABSENCE", "4": "CANCEL" },
-  NO_RECORD:          { "1": "SET_START_AND_END", "2": "MARK_ABSENCE", "3": "CANCEL" },
-  CLOSED_WORK_RECORD: { "1": "SET_START_AND_END", "2": "MARK_ABSENCE", "3": "CANCEL" },
-  ABSENCE_RECORD:     { "1": "SET_START_AND_END", "2": "MARK_ABSENCE", "3": "CANCEL" },
-};
 
 // ── Main entry point ──────────────────────────────────────────────────────────
 
