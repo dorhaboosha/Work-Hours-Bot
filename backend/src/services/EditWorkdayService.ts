@@ -114,6 +114,9 @@ function toEditWorkdayResult(
   };
 }
 
+/** Strict HH:mm (00:00–23:59). Matches EditWorkdaySchemas hhmmSchema. */
+const HH_MM_STRICT_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+
 // ── Action: SET_END_HOUR ──────────────────────────────────────────────────────
 
 /**
@@ -127,6 +130,13 @@ export async function setEndHour(
   ddMm: string,
   endTimeHhMm: string
 ): Promise<EditWorkdayResult> {
+  if (!HH_MM_STRICT_RE.test(endTimeHhMm)) {
+    throw new AppError(
+      "INVALID_TIME_FORMAT",
+      'Time must be in HH:mm format (e.g. "17:30")'
+    );
+  }
+
   const settings = await getSettingsOrThrow(telegramId);
   const workDateStr = resolveDdMmToDate(ddMm, settings.timezone);
   const workDate = localDateToUtcMidnight(workDateStr);
