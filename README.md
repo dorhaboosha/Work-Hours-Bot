@@ -113,3 +113,34 @@ npx prisma generate
 ```bash
 npm run dev
 ```
+
+## Deployment (Render)
+
+Production runs as a single Node process: Express (including `GET /health`) and the Telegram bot (long-polling) together. The deployment checklist in `openspec/changes/remove-multi-language-support/tasks.md` (section 9) captures the full Render setup; the summary below matches what is configured in production.
+
+### Render services
+
+1. **PostgreSQL** — provision a database in the same region as the web service. Use the **Internal Database URL** for the web service env var.
+2. **Web Service** — connect the GitHub repo and use the commands below.
+
+| Setting | Value |
+|---|---|
+| **Build Command** | `npm install --include=dev && npm run migrate:deploy -w backend && npm run build -w backend` |
+| **Start Command** | `npm start -w backend` |
+
+`--include=dev` is required because Render sets `NODE_ENV=production` during build, which otherwise skips TypeScript and other devDependencies needed to compile. Migrations run in the build step because Pre-Deploy commands are not available on the free tier.
+
+The backend `build` script runs `prisma generate && tsc && tsc-alias`; `start` runs `node dist/backend/src/server.js`.
+
+### Environment variables
+
+Set these on the Render Web Service (see also `backend/.env.example` for local development):
+
+| Variable | Required | Description |
+|---|---|---|
+| `DATABASE_URL` | Yes | PostgreSQL connection string. Use Render's **Internal** URL when the database and web service are in the same region. |
+| `TELEGRAM_BOT_TOKEN` | Yes | Bot token from [@BotFather](https://t.me/BotFather). Mark as **Secret** in Render. |
+| `NODE_ENV` | Yes | Set to `production`. |
+| `PORT` | No | Injected automatically by Render. Do not set manually in production. |
+
+Locally, copy `backend/.env.example` to `backend/.env` and fill in `DATABASE_URL` and `TELEGRAM_BOT_TOKEN`. `PORT` defaults to `3000` for local dev.
