@@ -368,6 +368,42 @@ describe("EditWorkdayService", async () => {
     });
   });
 
+  // ── setEndHour – time validation ──────────────────────────────────────────────
+
+  describe("setEndHour – time validation", () => {
+    it("throws INVALID_TIME_FORMAT for out-of-range hour (25:00)", async () => {
+      await assert.rejects(
+        () => setEndHour("user1", "12-06", "25:00"),
+        (err: unknown) => {
+          assert.equal((err as { code: string }).code, "INVALID_TIME_FORMAT");
+          return true;
+        }
+      );
+    });
+
+    it("throws INVALID_TIME_FORMAT for out-of-range minute (17:70)", async () => {
+      await assert.rejects(
+        () => setEndHour("user1", "12-06", "17:70"),
+        (err: unknown) => {
+          assert.equal((err as { code: string }).code, "INVALID_TIME_FORMAT");
+          return true;
+        }
+      );
+    });
+
+    it("throws INVALID_TIME_RANGE when end time is before existing start time (08:30 Jerusalem < 09:00 start)", async () => {
+      // START_UTC is 06:00 UTC = 09:00 Jerusalem; 08:30 Jerusalem = 05:30 UTC → before start
+      mockFindRecordByDate.mock.mockImplementationOnce(async () => makeWorkRecord(false));
+      await assert.rejects(
+        () => setEndHour("user1", "12-06", "08:30"),
+        (err: unknown) => {
+          assert.equal((err as { code: string }).code, "INVALID_TIME_RANGE");
+          return true;
+        }
+      );
+    });
+  });
+
   // ── setStartAndEndHours ───────────────────────────────────────────────────────
 
   describe("setStartAndEndHours – happy path", () => {
@@ -400,6 +436,46 @@ describe("EditWorkdayService", async () => {
       mockFindRecordByDate.mock.mockImplementationOnce(async () => makeWorkRecord(true));
       const result = await setStartAndEndHours("user1", "12-06", "08:00", "16:00");
       assert.equal(result.recordType, "WORK");
+    });
+  });
+
+  // ── setStartAndEndHours – time validation ─────────────────────────────────────
+
+  describe("setStartAndEndHours – time validation", () => {
+    it("throws INVALID_TIME_FORMAT for out-of-range startTime hour (25:00-45:00)", async () => {
+      await assert.rejects(
+        () => setStartAndEndHours("user1", "12-06", "25:00", "45:00"),
+        (err: unknown) => {
+          assert.equal((err as { code: string }).code, "INVALID_TIME_FORMAT");
+          return true;
+        }
+      );
+    });
+
+    it("throws INVALID_TIME_FORMAT for out-of-range endTime minute (08:00 start, 17:70 end)", async () => {
+      await assert.rejects(
+        () => setStartAndEndHours("user1", "12-06", "08:00", "17:70"),
+        (err: unknown) => {
+          assert.equal((err as { code: string }).code, "INVALID_TIME_FORMAT");
+          return true;
+        }
+      );
+    });
+
+    it("throws INVALID_TIME_RANGE when endTime is before startTime (17:30-09:00)", async () => {
+      await assert.rejects(
+        () => setStartAndEndHours("user1", "12-06", "17:30", "09:00"),
+        (err: unknown) => {
+          assert.equal((err as { code: string }).code, "INVALID_TIME_RANGE");
+          return true;
+        }
+      );
+    });
+
+    it("accepts a valid range (08:15-17:30) and returns a WORK record", async () => {
+      const result = await setStartAndEndHours("user1", "12-06", "08:15", "17:30");
+      assert.equal(result.recordType, "WORK");
+      assert.ok(result.workedMinutes > 0);
     });
   });
 
