@@ -179,6 +179,19 @@ export async function setStartAndEndHours(
   startTimeHhMm: string,
   endTimeHhMm: string
 ): Promise<EditWorkdayResult> {
+  if (!HH_MM_STRICT_RE.test(startTimeHhMm)) {
+    throw new AppError(
+      "INVALID_TIME_FORMAT",
+      'startTime must be in HH:mm format (e.g. "09:00")'
+    );
+  }
+  if (!HH_MM_STRICT_RE.test(endTimeHhMm)) {
+    throw new AppError(
+      "INVALID_TIME_FORMAT",
+      'endTime must be in HH:mm format (e.g. "17:30")'
+    );
+  }
+
   const settings = await getSettingsOrThrow(telegramId);
   const workDateStr = resolveDdMmToDate(ddMm, settings.timezone);
   const workDate = localDateToUtcMidnight(workDateStr);
@@ -188,6 +201,13 @@ export async function setStartAndEndHours(
 
   const startTimeUtc = localTimeToUtc(workDateStr, startTimeHhMm, settings.timezone);
   const endTimeUtc   = localTimeToUtc(workDateStr, endTimeHhMm,   settings.timezone);
+
+  if (endTimeUtc.getTime() <= startTimeUtc.getTime()) {
+    throw new AppError(
+      "INVALID_TIME_RANGE",
+      "endTime must be after startTime"
+    );
+  }
   const expectedEndTimeUtc = calcExpectedEndTime(startTimeUtc, settings.dailyRequiredMinutes);
   const workedMinutes = calcWorkedMinutes(startTimeUtc, endTimeUtc);
 
