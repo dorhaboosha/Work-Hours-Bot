@@ -6,13 +6,16 @@ A Telegram bot for tracking personal work hours. Start your day, check your stat
 
 | Command | Description |
 |---|---|
-| `/setup` | Configure daily required hours, workdays, and timezone |
+| `/setup` | First-time setup: daily required hours, workdays, and timezone |
+| `/settings` | Show your current work settings |
+| `/settings_edit` | Change daily hours, workdays, or timezone |
 | `/start` | Start today's workday |
-| `/status` | Show current workday status |
-| `/end` | End today's workday |
-| `/end HH:mm` | Close a previous unfinished workday with a manual end time |
+| `/status` | Show today's active workday status |
+| `/end` | End today's active workday |
+| `/edit dd-mm` | Edit or fix a specific date (e.g. `/edit 12-06`) |
 | `/week` | Show current week summary |
 | `/month` | Show current month summary |
+| `/help` | List all available commands |
 
 ## Project Structure
 
