@@ -75,44 +75,69 @@ WorkHours-Bot/
 
 ## Getting Started
 
+Follow these steps from a fresh clone to a running local bot.
+
 ### Prerequisites
 
 - Node.js 20+
 - Docker + Docker Compose
-- A Telegram bot token (create one via [@BotFather](https://t.me/BotFather))
+- A Telegram bot token from [@BotFather](https://t.me/BotFather)
 
-### 1. Start the database
+### 1. Clone and install
+
+```bash
+git clone https://github.com/dorhaboosha/Work-Hours-Bot.git
+cd Work-Hours-Bot
+npm install
+```
+
+This installs dependencies for both workspaces (`backend` and `shared`).
+
+### 2. Start the database
 
 ```bash
 docker compose up -d
 ```
 
-### 2. Configure the backend
+PostgreSQL runs on port **5435** on the host (mapped from container port 5432). Credentials and database name match `docker-compose.yml`.
+
+### 3. Configure environment
 
 ```bash
 cp backend/.env.example backend/.env
-# Fill in DATABASE_URL and TELEGRAM_BOT_TOKEN in backend/.env
 ```
 
-### 3. Install dependencies
+On Windows (PowerShell): `Copy-Item backend\.env.example backend\.env`
 
-```bash
-npm install
-```
+Edit `backend/.env` and set at minimum:
 
-### 4. Run migrations and generate Prisma client
+| Variable | Local value |
+|---|---|
+| `DATABASE_URL` | `postgresql://workhours:workhours_password@localhost:5435/workhours_bot` |
+| `TELEGRAM_BOT_TOKEN` | Your token from BotFather |
+| `NODE_ENV` | `development` |
+
+`PORT` defaults to `3000` if omitted. See `backend/.env.example` for production notes.
+
+### 4. Run migrations
 
 ```bash
 cd backend
 npx prisma migrate dev
-npx prisma generate
+cd ..
 ```
 
+This applies all migrations and generates the Prisma client. Accept the default migration name if prompted on first run.
+
 ### 5. Start the bot
+
+From the **repository root** (not `backend/`):
 
 ```bash
 npm run dev
 ```
+
+You should see `Server running on port 3000 [development]`. In Telegram, send `/setup` to configure your account, then `/start` to begin tracking.
 
 ## Deployment (Render)
 
