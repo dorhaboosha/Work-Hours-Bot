@@ -25,16 +25,42 @@ A Telegram bot for tracking personal work hours. Start your day, check your stat
 | `/month` | Show current month summary |
 | `/help` | List all available commands |
 
+## Tech Stack
+
+| Layer | Technology |
+|---|---|
+| Runtime | Node.js |
+| Language | TypeScript |
+| HTTP API | Express |
+| Bot | Telegraf (Telegram long-polling) |
+| Database | PostgreSQL |
+| ORM | Prisma |
+| Validation | Zod |
+| Monorepo | npm workspaces (`backend` + `shared`) |
+
 ## Project Structure
 
 ```
-root/
-├── backend/          # Node.js + Express + TypeScript backend
-│   ├── prisma/       # Prisma schema and migrations
-│   └── src/          # Bot, routes, controllers, services, repositories
-├── shared/           # Shared TypeScript types, schemas, and utilities
-├── docs/             # Project documentation
-└── docker-compose.yml
+WorkHours-Bot/
+├── backend/                 # Express API + Telegram bot
+│   ├── prisma/              # Schema and migrations
+│   └── src/
+│       ├── bot/             # Handlers, conversation flows, session store
+│       ├── constants/       # Time formats, timezones, edit actions, etc.
+│       ├── controllers/     # HTTP request handlers
+│       ├── lang/            # botLabels.json (English bot messages)
+│       ├── middlewares/
+│       ├── repositories/    # Prisma data access
+│       ├── routes/
+│       ├── services/        # Business logic
+│       ├── utils/
+│       └── validators/      # Zod request schemas
+├── shared/                  # Shared types and utilities
+│   └── src/
+│       ├── types/
+│       └── utils/
+├── docker-compose.yml       # Local PostgreSQL
+└── package.json             # npm workspaces root
 ```
 
 ## Getting Started
