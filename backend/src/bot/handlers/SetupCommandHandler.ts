@@ -3,7 +3,7 @@ import { getSettings } from "@/services/SettingsService";
 import { formatMinutesAsDuration } from "@/bot/utils/formatMessage";
 import { t, formatWorkdays } from "@/i18n";
 import type { Weekday } from "@shared/types/CoreTypes";
-import { startSetupFlow } from "@/bot/handlers/ConversationHandler";
+import { startSetupFlow } from "@/bot/flows/setupFlow";
 
 export async function handleSetup(ctx: Context): Promise<void> {
   const telegramId = ctx.from?.id?.toString();
