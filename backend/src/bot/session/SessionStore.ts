@@ -12,7 +12,6 @@ export type SessionStep =
   | "setup:workdays_custom"
   | "setup:timezone"
   | "setup:timezone_custom"
-  | "setup:language"
   // /settings_edit multi-step
   | "settings_edit:choose_field"
   | "settings_edit:hours"
@@ -20,7 +19,6 @@ export type SessionStep =
   | "settings_edit:workdays_custom"
   | "settings_edit:timezone"
   | "settings_edit:timezone_custom"
-  | "settings_edit:language"
   // /edit dd-mm multi-step
   | "edit:choose_action"
   | "edit:set_end_hour"

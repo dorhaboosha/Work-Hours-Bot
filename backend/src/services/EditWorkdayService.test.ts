@@ -32,7 +32,6 @@ const SETTINGS = {
   dailyRequiredMinutes: DAILY_MIN,
   timezone: TIMEZONE,
   workdays: [0, 1, 2, 3, 4],
-  language: "en",
   createdAt: new Date(),
   updatedAt: new Date(),
 };

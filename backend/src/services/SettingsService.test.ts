@@ -33,7 +33,7 @@ describe("SettingsService", async () => {
   let mockUpsert: ReturnType<typeof mock.fn<any>>;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let mockFind: ReturnType<typeof mock.fn<any>>;
-  let baseSetupInput: { timezone: string; workdays: number[]; language: "en" | "he" };
+  let baseSetupInput: { timezone: string; workdays: number[] };
 
   before(() => {
     mockUpsert = mock.fn(async (input: Record<string, unknown>) => ({
@@ -42,7 +42,6 @@ describe("SettingsService", async () => {
       dailyRequiredMinutes: input["dailyRequiredMinutes"],
       timezone: input["timezone"],
       workdays: input["workdays"],
-      language: input["language"] ?? "en",
       createdAt: new Date(),
       updatedAt: new Date(),
     }));
@@ -70,7 +69,7 @@ describe("SettingsService", async () => {
     getSettingsOrThrow = svc.getSettingsOrThrow;
     DEFAULT_TIMEZONE = svc.DEFAULT_TIMEZONE;
     DEFAULT_WORKDAYS = svc.DEFAULT_WORKDAYS;
-    baseSetupInput = { timezone: DEFAULT_TIMEZONE, workdays: [0, 1, 2, 3, 4], language: "en" };
+    baseSetupInput = { timezone: DEFAULT_TIMEZONE, workdays: [0, 1, 2, 3, 4] };
   });
 
   afterEach(() => {
@@ -116,7 +115,6 @@ describe("SettingsService", async () => {
         dailyHoursOrMinutes: 480,
         timezone: "America/New_York",
         workdays: [1, 2, 3, 4, 5],
-        language: "en",
       });
 
       assert.equal(mockUpsert.mock.calls[0].arguments[0].timezone, "America/New_York");
@@ -128,22 +126,9 @@ describe("SettingsService", async () => {
         dailyHoursOrMinutes: 480,
         timezone: "UTC",
         workdays: [1, 2, 3, 4, 5],
-        language: "en",
       });
 
       assert.deepEqual(mockUpsert.mock.calls[0].arguments[0].workdays, [1, 2, 3, 4, 5]);
-    });
-
-    it("passes language to upsert", async () => {
-      await setupSettings({
-        telegramId: "7",
-        dailyHoursOrMinutes: 480,
-        timezone: "UTC",
-        workdays: [0, 1, 2, 3, 4],
-        language: "he",
-      });
-
-      assert.equal(mockUpsert.mock.calls[0].arguments[0].language, "he");
     });
   });
 
@@ -164,7 +149,6 @@ describe("SettingsService", async () => {
         dailyRequiredMinutes: 480,
         timezone: "UTC",
         workdays: [0, 1, 2, 3, 4],
-        language: "en",
         createdAt: new Date(),
         updatedAt: new Date(),
       }));
