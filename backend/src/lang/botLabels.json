@@ -37,6 +37,15 @@
     "display": "⚙️ *Your current settings*\n\n📋 Daily hours:  *{{dailyHoursStr}}*\n📅 Workdays:     *{{workdaysStr}}*\n🌍 Timezone:     *{{timezone}}*"
   },
   "setup": {
+    "askHours": "⚙️ *Let's set up your work schedule!*\n\n*Step 1 of 3 — Daily hours*\n\nHow many hours do you work per day?\n\nExample: `8.8` (= 8 hours and 48 minutes)",
+    "chooseWorkdays": "*Step 2 of 3 — Workdays*\n\nChoose your workdays:\n\n1. Sunday–Thursday\n2. Monday–Friday\n3. Custom",
+    "askCustomWorkdays": "Enter your workdays as comma-separated numbers:\n\n0=Sunday, 1=Monday, 2=Tuesday, 3=Wednesday, 4=Thursday, 5=Friday, 6=Saturday\n\nExample: `0,1,2,3,4`",
+    "chooseTimezone": "*Step 3 of 3 — Timezone*\n\nChoose your timezone:\n\n1. Asia/Jerusalem\n2. Europe/London\n3. Europe/Berlin\n4. America/New\\_York\n5. Custom (IANA format)",
+    "askCustomTimezone": "Enter your timezone in IANA format:\n\nExample: `Asia/Jerusalem`",
+    "invalidHours": "❌ Please enter a valid positive number.\n\nExample: `8.8`",
+    "invalidWorkdayChoice": "❌ Please choose 1, 2, or 3.\n\n*Step 2 of 3 — Workdays*\n\nChoose your workdays:\n\n1. Sunday–Thursday\n2. Monday–Friday\n3. Custom",
+    "invalidWorkdayFormat": "❌ Invalid format. Use comma-separated numbers 0–6.\n\nExample: `0,1,2,3,4`",
+    "invalidTimezoneChoice": "❌ Please choose 1–5.\n\n*Step 3 of 3 — Timezone*\n\nChoose your timezone:\n\n1. Asia/Jerusalem\n2. Europe/London\n3. Europe/Berlin\n4. America/New\\_York\n5. Custom (IANA format)",
     "alreadyCompleted": "✅ *Setup is already complete.*\n\nCurrent settings:\n  Daily hours: {{dailyHoursStr}}\n  Workdays:    {{workdaysStr}}\n  Timezone:    {{timezone}}\n\nTo change your settings, use:\n/settings\\_edit",
     "complete": "✅ *Setup complete!*\n\n{{settings}}\n\nYou can now use /start to begin tracking your workday."
   },
@@ -47,7 +56,12 @@
     "askCustomWorkdays": "Enter workdays as comma-separated numbers:\n\n0=Sunday, 1=Monday, 2=Tuesday, 3=Wednesday, 4=Thursday, 5=Friday, 6=Saturday\n\nExample: `0,1,2,3,4`",
     "chooseTimezone": "Choose timezone:\n\n1. Asia/Jerusalem\n2. Europe/London\n3. Europe/Berlin\n4. America/New_York\n5. Custom (IANA format)",
     "askCustomTimezone": "Enter timezone in IANA format:\n\nExample: `Asia/Jerusalem`",
-    "updated": "✅ *Settings updated.*\n\n{{settings}}"
+    "updated": "✅ *Settings updated.*\n\n{{settings}}",
+    "invalidChooseField": "❌ What do you want to edit?\n\n1. Daily required hours\n2. Workdays\n3. Timezone",
+    "invalidAskHours": "❌ Enter new daily required hours:\n\nExample: `8.8`",
+    "invalidChooseWorkdays": "❌ Choose workdays:\n\n1. Sunday–Thursday\n2. Monday–Friday\n3. Custom",
+    "invalidAskCustomWorkdays": "❌ Enter workdays as comma-separated numbers:\n\n0=Sunday, 1=Monday, 2=Tuesday, 3=Wednesday, 4=Thursday, 5=Friday, 6=Saturday\n\nExample: `0,1,2,3,4`",
+    "invalidChooseTimezone": "❌ Choose timezone:\n\n1. Asia/Jerusalem\n2. Europe/London\n3. Europe/Berlin\n4. America/New_York\n5. Custom (IANA format)"
   },
   "help": "📖 *WorkHours Bot — Available commands*\n\n/start          — Start today's workday\n/status         — Show today's active status\n/end            — End today's active workday\n/edit dd-mm     — Edit or fix a specific date\n/week           — Show current week summary\n/month          — Show current month summary\n/settings       — Show current settings\n/settings\\_edit — Edit settings\n/help           — Show this message",
   "edit": {
@@ -61,7 +75,11 @@
     "endHourSaved": "✅ *End hour saved*\n\n📅 Date:    *{{date}}*\n🕐 Start:   *{{startStr}}*\n🏁 End:     *{{endStr}}*\n✅ Worked:  *{{workedStr}}*\n⚖️ Balance: *{{balanceStr}}*",
     "startEndSaved": "✅ *Start and end hours saved*\n\n📅 Date:    *{{date}}*\n🕐 Start:   *{{startStr}}*\n🏁 End:     *{{endStr}}*\n✅ Worked:  *{{workedStr}}*\n⚖️ Balance: *{{balanceStr}}*",
     "absenceSaved": "✅ *{{absenceLabel}} saved*\n\n📅 Date:       *{{date}}*\n⏱ Counted as: *{{creditedStr}}*\n⚖️ Balance:    *{{balanceStr}}*",
-    "cancelled": "↩️ Cancelled."
+    "cancelled": "↩️ Cancelled.",
+    "invalidChoice": "❌ Please choose a number between 1 and {{maxChoice}}.",
+    "invalidPromptEndHour": "❌ Enter end time:\n\nExample: 17:30",
+    "invalidPromptStartAndEndHours": "❌ Enter start and end time:\n\nExample: 08:15-17:30",
+    "invalidAbsenceTypeList": "❌ Choose absence type:\n\n1. Sick day\n2. Vacation day\n3. Holiday\n4. Holiday eve\n5. Unpaid absence\n6. Election day"
   },
   "errors": {
     "userSettingsNotFound": "⚙️ *You haven't configured your account yet.*\n\nRun `/setup` to get started.",
