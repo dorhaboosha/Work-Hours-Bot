@@ -4,6 +4,7 @@ import type {
   DailyRecordType,
   EditAction,
   EditRecordState,
+  RecordLookupState,
   TelegramId,
 } from "./CoreTypes";
 
@@ -81,6 +82,19 @@ export interface EditWorkdayResult {
   requiredMinutes: number;
   /** workedMinutes - requiredMinutes; positive = overtime, negative = under */
   balanceMinutes: number;
+}
+
+// --- DateRecordLookup ---
+
+/** Returned by GET /workdays/record/:telegramId/:date (read-only /record dd-mm lookup) */
+export interface DateRecordLookup {
+  /** YYYY-MM-DD */
+  workDate: string;
+  /** dd-mm */
+  displayDate: string;
+  state: RecordLookupState;
+  /** null when state is NO_RECORD */
+  record: DailyRecord | null;
 }
 
 // --- SummaryPeriod ---
