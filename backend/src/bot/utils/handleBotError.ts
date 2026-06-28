@@ -40,10 +40,10 @@ export async function handleBotError(ctx: Context, err: unknown): Promise<void> 
         msg = t("errors.unknown");
     }
 
-    await ctx.reply(msg, { parse_mode: "Markdown" });
+    await ctx.reply(msg, { parse_mode: "Markdown" }).catch(() => undefined);
     return;
   }
 
   console.error("Unhandled bot error:", err);
-  await ctx.reply(t("errors.unknown"), { parse_mode: "Markdown" });
+  await ctx.reply(t("errors.unknown"), { parse_mode: "Markdown" }).catch(() => undefined);
 }

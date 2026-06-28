@@ -41,4 +41,10 @@ export function registerCommands(): void {
   // Plain-text replies continue an active multi-step conversation.
   // This must be registered after command handlers.
   bot.on("text", handleConversation);
+
+  // Catch any error that escapes a handler (e.g. network failure on ctx.reply).
+  // Without this Telegraf prints "Unhandled error while processing" to stderr.
+  bot.catch((err: unknown) => {
+    console.error("Bot global error:", err);
+  });
 }
