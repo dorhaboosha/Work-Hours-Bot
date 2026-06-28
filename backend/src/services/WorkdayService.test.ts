@@ -70,6 +70,8 @@ describe("WorkdayService", async () => {
   let getTodayStatus: any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let endWorkday: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let getDateRecord: any;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let mockFindOpenRecord: ReturnType<typeof mock.fn<any>>;
@@ -83,6 +85,8 @@ describe("WorkdayService", async () => {
   let mockGetSettingsOrThrow: ReturnType<typeof mock.fn<any>>;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let mockGetLocalDate: ReturnType<typeof mock.fn<any>>;
+
+  let realResolveDdMmToDate: (ddMm: string, tz: string) => string;
 
   before(() => {
     // Default mock implementations (overridden per-test with mockImplementationOnce)
@@ -141,10 +145,12 @@ describe("WorkdayService", async () => {
     );
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const realDateUtils = require(dateUtilsKey) as typeof import("../utils/DateUtils");
+    realResolveDdMmToDate = realDateUtils.resolveDdMmToDate;
     injectCacheStub(dateUtilsKey, {
       getLocalDate: mockGetLocalDate,
       utcToLocalDate: realDateUtils.utcToLocalDate,
       utcToLocalTime: realDateUtils.utcToLocalTime,
+      resolveDdMmToDate: realDateUtils.resolveDdMmToDate,
       manualEndTimeToUtc: realDateUtils.manualEndTimeToUtc,
       addMinutesUtc: realDateUtils.addMinutesUtc,
       minutesBetween: realDateUtils.minutesBetween,
@@ -158,6 +164,7 @@ describe("WorkdayService", async () => {
     startWorkday = svc.startWorkday;
     getTodayStatus = svc.getTodayStatus;
     endWorkday = svc.endWorkday;
+    getDateRecord = svc.getDateRecord;
   });
 
   afterEach(() => {
@@ -364,6 +371,55 @@ describe("WorkdayService", async () => {
     });
   });
 
+  // ── getDateRecord – helpers ───────────────────────────────────────────────────
+
+  function makeCompletedWorkRecord() {
+    const start = new Date("2026-06-12T06:00:00Z");
+    return {
+      id: "r-completed",
+      telegramId: "user1",
+      workDate: PREV_WORK_DATE,
+      recordType: "WORK",
+      startTime: start,
+      expectedEndTime: new Date(start.getTime() + 480 * 60_000),
+      endTime: new Date("2026-06-12T14:30:00Z"),
+      workedMinutes: 510,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+  }
+
+  function makeOpenWorkRecordForDate() {
+    const start = new Date("2026-06-12T06:00:00Z");
+    return {
+      id: "r-open-date",
+      telegramId: "user1",
+      workDate: PREV_WORK_DATE,
+      recordType: "WORK",
+      startTime: start,
+      expectedEndTime: new Date(start.getTime() + 480 * 60_000),
+      endTime: null,
+      workedMinutes: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+  }
+
+  function makeVacationRecord() {
+    return {
+      id: "r-vacation",
+      telegramId: "user1",
+      workDate: PREV_WORK_DATE,
+      recordType: "VACATION",
+      startTime: null,
+      expectedEndTime: null,
+      endTime: null,
+      workedMinutes: SETTINGS.dailyRequiredMinutes,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+  }
+
   // ── endWorkday – previous-day guard ──────────────────────────────────────────
 
   describe("endWorkday – previous-day guard", () => {
@@ -383,6 +439,100 @@ describe("WorkdayService", async () => {
         }
       );
       assert.equal(mockUpdateDailyRecord.mock.calls.length, 0);
+    });
+  });
+
+  // ── getDateRecord ─────────────────────────────────────────────────────────────
+
+  describe("getDateRecord – state classification", () => {
+    it("returns state=COMPLETED_WORK_RECORD for a closed WORK record", async () => {
+      mockFindRecordByDate.mock.mockImplementationOnce(
+        async () => makeCompletedWorkRecord()
+      );
+
+      const result = await getDateRecord("user1", "12-06");
+
+      assert.equal(result.state, "COMPLETED_WORK_RECORD");
+      assert.equal(result.displayDate, "12-06");
+      assert.ok(result.record !== null);
+      assert.equal(result.record.recordType, "WORK");
+      assert.ok(result.record.endTime !== null);
+      assert.equal(result.record.workedMinutes, 510);
+    });
+
+    it("returns state=OPEN_WORK_RECORD for a WORK record without endTime", async () => {
+      mockFindRecordByDate.mock.mockImplementationOnce(
+        async () => makeOpenWorkRecordForDate()
+      );
+
+      const result = await getDateRecord("user1", "12-06");
+
+      assert.equal(result.state, "OPEN_WORK_RECORD");
+      assert.ok(result.record !== null);
+      assert.equal(result.record.endTime, null);
+      assert.equal(result.record.workedMinutes, null);
+    });
+
+    it("returns state=ABSENCE_RECORD for an absence record", async () => {
+      mockFindRecordByDate.mock.mockImplementationOnce(
+        async () => makeVacationRecord()
+      );
+
+      const result = await getDateRecord("user1", "12-06");
+
+      assert.equal(result.state, "ABSENCE_RECORD");
+      assert.ok(result.record !== null);
+      assert.equal(result.record.recordType, "VACATION");
+      assert.equal(result.record.workedMinutes, SETTINGS.dailyRequiredMinutes);
+    });
+
+    it("returns state=NO_RECORD with record=null when no record exists", async () => {
+      const result = await getDateRecord("user1", "12-06");
+
+      assert.equal(result.state, "NO_RECORD");
+      assert.equal(result.record, null);
+    });
+
+    it("resolves dd-mm to the correct workDate and passes the matching UTC Date to findRecordByDate", async () => {
+      const ddMm = "12-06";
+      const expectedWorkDate = realResolveDdMmToDate(ddMm, SETTINGS.timezone);
+      const expectedUtcDate = new Date(`${expectedWorkDate}T00:00:00.000Z`);
+
+      const result = await getDateRecord("user1", ddMm);
+
+      assert.equal(result.workDate, expectedWorkDate);
+      assert.equal(result.displayDate, ddMm);
+      assert.equal(result.timezone, SETTINGS.timezone);
+
+      assert.equal(mockFindRecordByDate.mock.calls.length, 1);
+      const passedDate = mockFindRecordByDate.mock.calls[0].arguments[1] as Date;
+      assert.equal(passedDate.toISOString(), expectedUtcDate.toISOString());
+    });
+  });
+
+  describe("getDateRecord – guards", () => {
+    it("throws USER_SETTINGS_NOT_FOUND when settings are missing", async () => {
+      mockGetSettingsOrThrow.mock.mockImplementationOnce(async () => {
+        throw Object.assign(new Error("No settings"), {
+          code: "USER_SETTINGS_NOT_FOUND",
+        });
+      });
+
+      await assert.rejects(() => getDateRecord("user1", "12-06"), (err: unknown) => {
+        assert.equal((err as { code: string }).code, "USER_SETTINGS_NOT_FOUND");
+        return true;
+      });
+    });
+
+    it("does not call findRecordByDate when settings are missing", async () => {
+      mockGetSettingsOrThrow.mock.mockImplementationOnce(async () => {
+        throw Object.assign(new Error("No settings"), {
+          code: "USER_SETTINGS_NOT_FOUND",
+        });
+      });
+
+      await assert.rejects(() => getDateRecord("user1", "12-06"));
+      assert.equal(mockFindRecordByDate.mock.calls.length, 0);
     });
   });
 });

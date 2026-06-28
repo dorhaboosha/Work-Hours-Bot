@@ -15,6 +15,7 @@ A Telegram bot for tracking personal work hours. Start your day, check your stat
 ## Features
 
 - **Daily work tracking** — clock in with `/start`, check progress with `/status`, and close the day with `/end`
+- **Record lookup** — use `/record dd-mm` to instantly view the details of any specific date (read-only)
 - **Edit past dates** — use `/edit dd-mm` to fix hours or mark absences on any workday
 - **Absence types** — sick, vacation, holiday, holiday eve, unpaid absence, and election (via the edit flow)
 - **Summaries** — weekly and monthly balance views against your configured required hours
@@ -30,6 +31,7 @@ A Telegram bot for tracking personal work hours. Start your day, check your stat
 | `/start` | Start today's workday |
 | `/status` | Show today's active workday status |
 | `/end` | End today's active workday |
+| `/record dd-mm` | View the record for a specific date (e.g. `/record 12-06`) |
 | `/edit dd-mm` | Edit or fix a specific date (e.g. `/edit 12-06`) |
 | `/week` | Show current week summary |
 | `/month` | Show current month summary |

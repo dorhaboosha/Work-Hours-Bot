@@ -17,7 +17,9 @@ import {
 import { getLocalDate, utcToLocalDate } from "@/utils/DateUtils";
 import { AppError } from "@/utils/AppError";
 import { DateTime } from "luxon";
-import type { WorkdayStatus, EndWorkdayResult } from "@shared/types/ViewTypes";
+import type { WorkdayStatus, EndWorkdayResult, DateRecordLookup } from "@shared/types/ViewTypes";
+import type { DailyRecordType, RecordLookupState } from "@shared/types/CoreTypes";
+import { resolveDdMmToDate } from "@/utils/DateUtils";
 
 /**
  * Converts a local YYYY-MM-DD date string to a UTC midnight Date so it can be
@@ -194,6 +196,60 @@ export async function endWorkday(telegramId: string): Promise<EndWorkdayResult> 
     requiredMinutes: settings.dailyRequiredMinutes,
     balanceMinutes,
   };
+}
+
+/**
+ * Read-only lookup for a specific date via `/record dd-mm`.
+ * Resolves `ddMm` to the current year in the user's timezone, loads the record
+ * (if any), and classifies it as one of:
+ *   COMPLETED_WORK_RECORD | OPEN_WORK_RECORD | ABSENCE_RECORD | NO_RECORD
+ *
+ * Never creates, updates, or deletes any record.
+ *
+ * Throws:
+ * - USER_SETTINGS_NOT_FOUND – no settings found for the user.
+ */
+export async function getDateRecord(
+  telegramId: string,
+  ddMm: string
+): Promise<DateRecordLookup> {
+  const settings = await getSettingsOrThrow(telegramId);
+  const workDateStr = resolveDdMmToDate(ddMm, settings.timezone);
+  const workDate = localDateStringToUtcMidnight(workDateStr);
+
+  const prisma = await findRecordByDate(telegramId, workDate);
+
+  const state: RecordLookupState = resolveRecordLookupState(prisma);
+  const base = { workDate: workDateStr, displayDate: ddMm, timezone: settings.timezone };
+
+  if (state === "NO_RECORD") {
+    return { ...base, state, record: null };
+  }
+
+  const record = {
+    id: prisma!.id,
+    telegramId: prisma!.telegramId,
+    workDate: workDateStr,
+    recordType: prisma!.recordType as DailyRecordType,
+    startTime: prisma!.startTime?.toISOString() ?? null,
+    expectedEndTime: prisma!.expectedEndTime?.toISOString() ?? null,
+    endTime: prisma!.endTime?.toISOString() ?? null,
+    workedMinutes: prisma!.workedMinutes ?? null,
+    createdAt: prisma!.createdAt.toISOString(),
+    updatedAt: prisma!.updatedAt.toISOString(),
+  };
+
+  return { ...base, state, record };
+}
+
+function resolveRecordLookupState(
+  record: Awaited<ReturnType<typeof findRecordByDate>>
+): RecordLookupState {
+  if (record === null) return "NO_RECORD";
+  if (record.recordType === "WORK") {
+    return record.endTime === null ? "OPEN_WORK_RECORD" : "COMPLETED_WORK_RECORD";
+  }
+  return "ABSENCE_RECORD";
 }
 
 /**

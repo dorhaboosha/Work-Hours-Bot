@@ -7,6 +7,7 @@ import { handleStart } from "@/bot/handlers/StartCommandHandler";
 import { handleStatus } from "@/bot/handlers/StatusCommandHandler";
 import { handleEnd } from "@/bot/handlers/EndCommandHandler";
 import { handleEdit } from "@/bot/handlers/EditCommandHandler";
+import { handleRecord } from "@/bot/handlers/RecordCommandHandler";
 import { handleWeek } from "@/bot/handlers/WeekCommandHandler";
 import { handleMonth } from "@/bot/handlers/MonthCommandHandler";
 import { handleHelp } from "@/bot/handlers/HelpCommandHandler";
@@ -33,6 +34,7 @@ export function registerCommands(): void {
   bot.command("start", handleStart);
   bot.command("status", handleStatus);
   bot.command("end", handleEnd);
+  bot.command("record", handleRecord);
   bot.command("edit", handleEdit);
   bot.command("week", handleWeek);
   bot.command("month", handleMonth);

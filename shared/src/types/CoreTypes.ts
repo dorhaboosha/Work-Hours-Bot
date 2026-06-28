@@ -79,6 +79,13 @@ export type EditRecordState =
   | "CLOSED_WORK_RECORD"
   | "ABSENCE_RECORD";
 
+/** The state of a date returned by the read-only /record dd-mm lookup */
+export type RecordLookupState =
+  | "COMPLETED_WORK_RECORD"
+  | "OPEN_WORK_RECORD"
+  | "ABSENCE_RECORD"
+  | "NO_RECORD";
+
 /** The action the user can take when editing a specific date */
 export type EditAction =
   | "SET_END_HOUR"

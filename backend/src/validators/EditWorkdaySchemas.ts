@@ -2,8 +2,8 @@ import { z } from "zod";
 
 /**
  * Matches dd-mm format with valid day (01–31) and month (01–12) ranges.
- * Calendar validity (e.g. 31-02 being impossible) is enforced by the service
- * when resolving the date to the current year.
+ * Calendar validity (e.g. 31-02 being impossible) is enforced by
+ * `resolveDdMmToDate` in DateUtils when constructing the Luxon DateTime.
  */
 export const EditDayDateParamSchema = z
   .string()
