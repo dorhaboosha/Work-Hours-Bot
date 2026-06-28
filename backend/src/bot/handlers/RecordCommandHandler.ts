@@ -1,5 +1,7 @@
 import type { Context } from "telegraf";
 import { getDateRecord } from "@/services/WorkdayService";
+import { getSettingsOrThrow } from "@/services/SettingsService";
+import { getLocalDate } from "@/utils/DateUtils";
 import { handleBotError } from "@/bot/utils/handleBotError";
 import { formatTime, formatMinutesAsDuration } from "@/bot/utils/formatMessage";
 import { t } from "@/i18n";
@@ -15,12 +17,25 @@ export async function handleRecord(ctx: Context): Promise<void> {
   const args = text.trim().split(/\s+/).slice(1);
 
   try {
-    if (args.length === 0 || !DD_MM_RE.test(args[0])) {
+    if (args.length > 1) {
       await ctx.reply(t("record.usageHint"), { parse_mode: "Markdown" }).catch(() => undefined);
       return;
     }
 
-    const ddMm = args[0];
+    let ddMm: string;
+
+    if (args.length === 0) {
+      const settings = await getSettingsOrThrow(telegramId);
+      const today = getLocalDate(settings.timezone); // YYYY-MM-DD
+      const [yyyy, mm, dd] = today.split("-");
+      void yyyy;
+      ddMm = `${dd}-${mm}`;
+    } else if (!DD_MM_RE.test(args[0])) {
+      await ctx.reply(t("record.usageHint"), { parse_mode: "Markdown" }).catch(() => undefined);
+      return;
+    } else {
+      ddMm = args[0];
+    }
     const lookup = await getDateRecord(telegramId, ddMm);
     const { timezone } = lookup;
 
