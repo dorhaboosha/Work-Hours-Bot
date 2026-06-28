@@ -4,10 +4,11 @@ import {
   getTodayStatus,
   endWorkday,
   listWorkdays,
+  getDateRecord,
 } from "@/services/WorkdayService";
 import { getEditDayOptions, setEndHour, setStartAndEndHours, markAbsence } from "@/services/EditWorkdayService";
 import { success } from "@/utils/ApiResponse";
-import type { StartWorkdayInput, EndWorkdayInput, DailyRecordsQuery } from "@/validators/WorkdaySchemas";
+import type { StartWorkdayInput, EndWorkdayInput, DailyRecordsQuery, RecordDayParams } from "@/validators/WorkdaySchemas";
 import type { EditDayParams, EditWorkdayInput } from "@/validators/EditWorkdaySchemas";
 import type { AbsenceRecordType } from "@shared/types/CoreTypes";
 
@@ -47,6 +48,20 @@ export async function end(
   try {
     const { telegramId } = req.body as EndWorkdayInput;
     const result = await endWorkday(telegramId);
+    res.status(200).json(success(result));
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function getRecord(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const { telegramId, date } = req.params as RecordDayParams;
+    const result = await getDateRecord(telegramId, date);
     res.status(200).json(success(result));
   } catch (err) {
     next(err);
