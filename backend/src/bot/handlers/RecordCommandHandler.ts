@@ -17,6 +17,11 @@ export async function handleRecord(ctx: Context): Promise<void> {
   const args = text.trim().split(/\s+/).slice(1);
 
   try {
+    if (args.length > 1) {
+      await ctx.reply(t("record.usageHint"), { parse_mode: "Markdown" }).catch(() => undefined);
+      return;
+    }
+
     let ddMm: string;
 
     if (args.length === 0) {
