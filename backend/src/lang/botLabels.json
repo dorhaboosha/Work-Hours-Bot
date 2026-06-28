@@ -82,6 +82,13 @@
     "invalidPromptStartAndEndHours": "❌ Enter start and end time:\n\nExample: 08:15-17:30",
     "invalidAbsenceTypeList": "❌ Choose absence type:\n\n1. Sick day\n2. Vacation day\n3. Holiday\n4. Holiday eve\n5. Unpaid absence\n6. Election day"
   },
+  "record": {
+    "completedWork": "📋 *Record for {{date}}*\n\n🕐 Start:   *{{startStr}}*\n🏁 End:     *{{endStr}}*\n✅ Worked:  *{{workedStr}}*",
+    "openWork": "📋 *Record for {{date}}*\n\n🕐 Start:  *{{startStr}}*\n🏁 End:    *Not set*\n📂 Status: *Open*",
+    "absence": "📋 *Record for {{date}}*\n\n📂 Status: *{{absenceLabel}}*",
+    "noRecord": "📋 *No record found for {{date}}.*",
+    "usageHint": "Usage: `/record dd-mm` (e.g. `/record 12-06`)"
+  },
   "errors": {
     "userSettingsNotFound": "⚙️ *You haven't configured your account yet.*\n\nRun `/setup` to get started.",
     "dailyRecordAlreadyExists": "⚠️ *You've already started today's workday.*\n\nUse `/status` to check your progress or `/end` when you're done.",
