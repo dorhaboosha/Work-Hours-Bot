@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { EditDayDateParamSchema } from "@/validators/EditWorkdaySchemas";
 
 /** POST /workdays/start */
 export const StartWorkdaySchema = z.object({
@@ -26,3 +27,11 @@ export const DailyRecordsQuerySchema = z.object({
 });
 
 export type DailyRecordsQuery = z.infer<typeof DailyRecordsQuerySchema>;
+
+/** Path params schema for GET /workdays/record/:telegramId/:date */
+export const RecordDayParamsSchema = z.object({
+  telegramId: z.string().min(1, "telegramId is required"),
+  date: EditDayDateParamSchema,
+});
+
+export type RecordDayParams = z.infer<typeof RecordDayParamsSchema>;
