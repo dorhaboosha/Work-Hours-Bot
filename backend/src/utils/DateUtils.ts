@@ -1,4 +1,5 @@
 import { DateTime } from "luxon";
+import { AppError } from "@/utils/AppError";
 
 /**
  * Returns today's local date as a YYYY-MM-DD string in the given timezone.
@@ -34,20 +35,25 @@ export function utcToLocalTime(utc: Date | string, timezone: string): string {
 
 /**
  * Resolves a `dd-mm` string to a `YYYY-MM-DD` date using the current year in
- * the user's timezone. Used by the `/edit dd-mm` flow.
+ * the user's timezone. Used by the `/edit dd-mm` and `/record dd-mm` flows.
  *
  * Example:
  *   resolveDdMmToDate("20-06", "Asia/Jerusalem")  → "2026-06-20"
  *
- * Does not validate that `dd-mm` is a real calendar date — callers rely on
- * Zod schema validation (EditDayDateParamSchema) to reject invalid inputs.
+ * Throws `AppError("INVALID_DATE_FORMAT")` when the combination is not a real
+ * calendar date (e.g. 31-02, 29-02 on a non-leap year).
  */
 export function resolveDdMmToDate(ddMm: string, timezone: string): string {
   const year = DateTime.now().setZone(timezone).year;
   const [dd, mm] = ddMm.split("-").map(Number);
-  return DateTime.fromObject({ year, month: mm, day: dd }, { zone: timezone }).toFormat(
-    "yyyy-MM-dd"
-  );
+  const dt = DateTime.fromObject({ year, month: mm, day: dd }, { zone: timezone });
+  if (!dt.isValid) {
+    throw new AppError(
+      "INVALID_DATE_FORMAT",
+      `"${ddMm}" is not a valid calendar date (${dt.invalidReason ?? "invalid date"}).`
+    );
+  }
+  return dt.toFormat("yyyy-MM-dd");
 }
 
 /**

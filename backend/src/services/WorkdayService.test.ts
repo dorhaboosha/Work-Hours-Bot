@@ -86,6 +86,8 @@ describe("WorkdayService", async () => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let mockGetLocalDate: ReturnType<typeof mock.fn<any>>;
 
+  let realResolveDdMmToDate: (ddMm: string, tz: string) => string;
+
   before(() => {
     // Default mock implementations (overridden per-test with mockImplementationOnce)
     mockFindOpenRecord = mock.fn(async () => null);
@@ -143,6 +145,7 @@ describe("WorkdayService", async () => {
     );
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const realDateUtils = require(dateUtilsKey) as typeof import("../utils/DateUtils");
+    realResolveDdMmToDate = realDateUtils.resolveDdMmToDate;
     injectCacheStub(dateUtilsKey, {
       getLocalDate: mockGetLocalDate,
       utcToLocalDate: realDateUtils.utcToLocalDate,
@@ -488,6 +491,22 @@ describe("WorkdayService", async () => {
 
       assert.equal(result.state, "NO_RECORD");
       assert.equal(result.record, null);
+    });
+
+    it("resolves dd-mm to the correct workDate and passes the matching UTC Date to findRecordByDate", async () => {
+      const ddMm = "12-06";
+      const expectedWorkDate = realResolveDdMmToDate(ddMm, SETTINGS.timezone);
+      const expectedUtcDate = new Date(`${expectedWorkDate}T00:00:00.000Z`);
+
+      const result = await getDateRecord("user1", ddMm);
+
+      assert.equal(result.workDate, expectedWorkDate);
+      assert.equal(result.displayDate, ddMm);
+      assert.equal(result.timezone, SETTINGS.timezone);
+
+      assert.equal(mockFindRecordByDate.mock.calls.length, 1);
+      const passedDate = mockFindRecordByDate.mock.calls[0].arguments[1] as Date;
+      assert.equal(passedDate.toISOString(), expectedUtcDate.toISOString());
     });
   });
 

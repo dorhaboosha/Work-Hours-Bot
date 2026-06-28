@@ -220,22 +220,26 @@ export async function getDateRecord(
   const prisma = await findRecordByDate(telegramId, workDate);
 
   const state: RecordLookupState = resolveRecordLookupState(prisma);
-  const record = prisma
-    ? {
-        id: prisma.id,
-        telegramId: prisma.telegramId,
-        workDate: workDateStr,
-        recordType: prisma.recordType as DailyRecordType,
-        startTime: prisma.startTime?.toISOString() ?? null,
-        expectedEndTime: prisma.expectedEndTime?.toISOString() ?? null,
-        endTime: prisma.endTime?.toISOString() ?? null,
-        workedMinutes: prisma.workedMinutes ?? null,
-        createdAt: prisma.createdAt.toISOString(),
-        updatedAt: prisma.updatedAt.toISOString(),
-      }
-    : null;
+  const base = { workDate: workDateStr, displayDate: ddMm, timezone: settings.timezone };
 
-  return { workDate: workDateStr, displayDate: ddMm, state, record };
+  if (state === "NO_RECORD") {
+    return { ...base, state, record: null };
+  }
+
+  const record = {
+    id: prisma!.id,
+    telegramId: prisma!.telegramId,
+    workDate: workDateStr,
+    recordType: prisma!.recordType as DailyRecordType,
+    startTime: prisma!.startTime?.toISOString() ?? null,
+    expectedEndTime: prisma!.expectedEndTime?.toISOString() ?? null,
+    endTime: prisma!.endTime?.toISOString() ?? null,
+    workedMinutes: prisma!.workedMinutes ?? null,
+    createdAt: prisma!.createdAt.toISOString(),
+    updatedAt: prisma!.updatedAt.toISOString(),
+  };
+
+  return { ...base, state, record };
 }
 
 function resolveRecordLookupState(

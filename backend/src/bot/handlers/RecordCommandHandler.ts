@@ -1,11 +1,10 @@
 import type { Context } from "telegraf";
 import { getDateRecord } from "@/services/WorkdayService";
-import { getSettingsOrThrow } from "@/services/SettingsService";
 import { handleBotError } from "@/bot/utils/handleBotError";
 import { formatTime, formatMinutesAsDuration } from "@/bot/utils/formatMessage";
 import { t } from "@/i18n";
 import { DD_MM_RE } from "@/constants/timeFormats";
-import type { AbsenceRecordType, DailyRecordType } from "@shared/types/CoreTypes";
+import type { AbsenceRecordType } from "@shared/types/CoreTypes";
 import { isAbsenceRecordType } from "@shared/utils/recordTypeUtils";
 
 export async function handleRecord(ctx: Context): Promise<void> {
@@ -22,30 +21,29 @@ export async function handleRecord(ctx: Context): Promise<void> {
     }
 
     const ddMm = args[0];
-    const settings = await getSettingsOrThrow(telegramId);
     const lookup = await getDateRecord(telegramId, ddMm);
+    const { timezone } = lookup;
 
     let msg: string;
 
     switch (lookup.state) {
       case "COMPLETED_WORK_RECORD": {
-        const startStr = formatTime(lookup.record!.startTime!, settings.timezone);
-        const endStr = formatTime(lookup.record!.endTime!, settings.timezone);
-        const workedStr = formatMinutesAsDuration(lookup.record!.workedMinutes!);
+        const startStr = formatTime(lookup.record.startTime!, timezone);
+        const endStr = formatTime(lookup.record.endTime!, timezone);
+        const workedStr = formatMinutesAsDuration(lookup.record.workedMinutes!);
         msg = t("record.completedWork", { date: ddMm, startStr, endStr, workedStr });
         break;
       }
       case "OPEN_WORK_RECORD": {
-        const startStr = formatTime(lookup.record!.startTime!, settings.timezone);
+        const startStr = formatTime(lookup.record.startTime!, timezone);
         msg = t("record.openWork", { date: ddMm, startStr });
         break;
       }
       case "ABSENCE_RECORD": {
-        const recType = lookup.record?.recordType as DailyRecordType | undefined;
-        const absenceLabel =
-          recType && isAbsenceRecordType(recType)
-            ? t(`absenceType.${recType as AbsenceRecordType}`)
-            : recType ?? "Absence";
+        const recType = lookup.record.recordType;
+        const absenceLabel = isAbsenceRecordType(recType)
+          ? t(`absenceType.${recType as AbsenceRecordType}`)
+          : recType;
         msg = t("record.absence", { date: ddMm, absenceLabel });
         break;
       }
