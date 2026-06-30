@@ -12,7 +12,7 @@ A backend-focused portfolio project demonstrating software architecture, REST AP
 
 [![Node.js](https://img.shields.io/badge/Node.js-%3E%3D20-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.5-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![Version](https://img.shields.io/badge/version-v1.1-blue)](#features)
+[![Version](https://img.shields.io/badge/version-0.0.1-blue)](#features)
 [![Express](https://img.shields.io/badge/Express-4.x-000000?logo=express&logoColor=white)](https://expressjs.com/)
 [![Prisma](https://img.shields.io/badge/Prisma-7.x-2D3748?logo=prisma&logoColor=white)](https://www.prisma.io/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
@@ -66,22 +66,26 @@ It was built as a backend-focused project with an emphasis on clean architecture
 The application follows a layered architecture that separates presentation, business logic, and data access.
 
 ```text
-                   Telegram
-                       │
-                       ▼
-               Telegraf Bot
-                       │
-             Conversation Flows
-                       │
+          Telegram                    REST API
+              │                           │
+              ▼                           ▼
+        Telegraf Bot              REST Controllers
+              │                           │
+              ▼                           │
+    Conversation Flows                    │
+              │                           │
+              ▼                           │
+    Telegram Handlers                     │
+              │                           │
+              └──────────┬────────────────┘
+                         ▼
                Business Services
-              ↙                 ↘
-     REST Controllers      Telegram Handlers
-              │
-         Repositories
-              │
-          Prisma ORM
-              │
-         PostgreSQL
+                         │
+                   Repositories
+                         │
+                    Prisma ORM
+                         │
+                   PostgreSQL
 ```
 
 Both the Telegram bot and the REST API share the same business service layer to keep the application modular and avoid duplicated logic.
@@ -112,11 +116,11 @@ WorkHours-Bot/
 │       ├── constants/       # Time formats, timezones, edit actions, etc.
 │       ├── controllers/     # REST API controllers
 │       ├── lang/            # botLabels.json (English bot messages)
-│       ├── middlewares/
+│       ├── middlewares/     # Express middleware (validation, error handling)
 │       ├── repositories/    # Data access layer (Prisma)
-│       ├── routes/
+│       ├── routes/          # Express route definitions
 │       ├── services/        # Business logic layer
-│       ├── utils/
+│       ├── utils/           # Shared helpers (dates, errors, API responses)
 │       └── validators/      # Request validation (Zod)
 ├── shared/                  # Shared types and utilities
 │   └── src/
