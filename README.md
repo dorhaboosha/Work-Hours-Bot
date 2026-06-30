@@ -1,16 +1,40 @@
-# WorkHours Bot
+<p align="center">
+  <img src="assets/logo.jpeg" width="180" alt="Work Hours Bot Logo">
+</p>
+
+<h1 align="center">Work Hours Bot</h1>
+
+<p align="center">
+A backend-focused portfolio project demonstrating software architecture, REST API development, database design, and Telegram Bot integration using TypeScript and Node.js.
+</p>
+
+<p align="center">
 
 [![Node.js](https://img.shields.io/badge/Node.js-%3E%3D20-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.5-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![V1.1](https://img.shields.io/badge/version-V1.1-blue)](#features)
+[![Version](https://img.shields.io/badge/version-v1.1-blue)](#features)
 [![Express](https://img.shields.io/badge/Express-4.x-000000?logo=express&logoColor=white)](https://expressjs.com/)
-[![Prisma](https://img.shields.io/badge/Prisma-7.8-2D3748?logo=prisma&logoColor=white)](https://www.prisma.io/)
+[![Prisma](https://img.shields.io/badge/Prisma-7.x-2D3748?logo=prisma&logoColor=white)](https://www.prisma.io/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
 [![Telegraf](https://img.shields.io/badge/Telegraf-4.x-26A5E4?logo=telegram&logoColor=white)](https://telegraf.js.org/)
 [![Zod](https://img.shields.io/badge/Zod-3.x-3E67B1)](https://zod.dev/)
 [![License](https://img.shields.io/github/license/dorhaboosha/Work-Hours-Bot)](LICENSE)
 
-A Telegram bot for tracking personal work hours. Start your day, check your status, end your day, and view weekly and monthly summaries — all from Telegram.
+</p>
+
+Work Hours Bot is a Telegram bot that helps users track their daily work hours, manage work records, and generate weekly and monthly summaries.
+
+It was built as a backend-focused project with an emphasis on clean architecture, maintainability, and scalable application design.
+
+## Highlights
+
+- 🤖 Telegram bot built with TypeScript, Node.js, and Telegraf
+- 🏗️ Layered backend architecture
+- 🗄️ PostgreSQL database with Prisma ORM
+- 📊 Weekly and monthly work summaries
+- ⚙️ Configurable work schedules and timezone support
+- 🐳 Docker support for local development
+- 🚀 Deployable on Render
 
 ## Features
 
@@ -37,18 +61,45 @@ A Telegram bot for tracking personal work hours. Start your day, check your stat
 | `/month` | Show current month summary |
 | `/help` | List all available commands |
 
+## Architecture
+
+The application follows a layered architecture that separates presentation, business logic, and data access.
+
+```text
+                   Telegram
+                       │
+                       ▼
+               Telegraf Bot
+                       │
+             Conversation Flows
+                       │
+               Business Services
+              ↙                 ↘
+     REST Controllers      Telegram Handlers
+              │
+         Repositories
+              │
+          Prisma ORM
+              │
+         PostgreSQL
+```
+
+Both the Telegram bot and the REST API share the same business service layer to keep the application modular and avoid duplicated logic.
+
 ## Tech Stack
 
-| Layer | Technology |
-|---|---|
-| Runtime | Node.js |
+| Category | Technology |
+|------------|----------------|
 | Language | TypeScript |
-| HTTP API | Express |
-| Bot | Telegraf (Telegram long-polling) |
+| Runtime | Node.js |
+| Framework | Express |
+| Bot Framework | Telegraf |
 | Database | PostgreSQL |
 | ORM | Prisma |
 | Validation | Zod |
-| Monorepo | npm workspaces (`backend` + `shared`) |
+| Package Manager | npm Workspaces |
+| Deployment | Render |
+| Local Development | Docker |
 
 ## Project Structure
 
@@ -59,14 +110,14 @@ WorkHours-Bot/
 │   └── src/
 │       ├── bot/             # Handlers, conversation flows, session store
 │       ├── constants/       # Time formats, timezones, edit actions, etc.
-│       ├── controllers/     # HTTP request handlers
+│       ├── controllers/     # REST API controllers
 │       ├── lang/            # botLabels.json (English bot messages)
 │       ├── middlewares/
-│       ├── repositories/    # Prisma data access
+│       ├── repositories/    # Data access layer (Prisma)
 │       ├── routes/
-│       ├── services/        # Business logic
+│       ├── services/        # Business logic layer
 │       ├── utils/
-│       └── validators/      # Zod request schemas
+│       └── validators/      # Request validation (Zod)
 ├── shared/                  # Shared types and utilities
 │   └── src/
 │       ├── types/
@@ -74,6 +125,19 @@ WorkHours-Bot/
 ├── docker-compose.yml       # Local PostgreSQL
 └── package.json             # npm workspaces root
 ```
+
+## Engineering Decisions
+
+The project was designed with maintainability and extensibility in mind.
+
+Key design decisions include:
+
+- Layered architecture to separate presentation, business logic, and data access.
+- Prisma ORM for type-safe database operations.
+- PostgreSQL for reliable relational data storage.
+- Zod for runtime validation of incoming requests.
+- Shared workspace for reusable types and utilities.
+- Configuration-driven bot messages using a centralized JSON labels file.
 
 ## Getting Started
 
