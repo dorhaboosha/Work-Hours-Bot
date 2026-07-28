@@ -100,6 +100,18 @@ export function manualEndTimeToUtc(
 }
 
 /**
+ * Returns UTC midnight of the first day of the month containing `now`.
+ * Used as the retention-purge cutoff: any daily_records row with workDate
+ * strictly before this Date belongs to a fully-completed past month.
+ *
+ * Calendar-aware (via Luxon's `startOf("month")`), not day-count arithmetic,
+ * so it is correct for every month length and leap years with no special-casing.
+ */
+export function startOfCurrentUtcMonth(now: Date = new Date()): Date {
+  return DateTime.fromJSDate(now, { zone: "utc" }).startOf("month").toJSDate();
+}
+
+/**
  * Returns a new UTC Date that is `minutes` after the given UTC base date.
  * Used to calculate expectedEndTime from startTime + dailyRequiredMinutes.
  */
