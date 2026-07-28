@@ -16,13 +16,25 @@ export async function runRecordRetentionOnce(): Promise<void> {
 
 /**
  * Starts the retention purge: runs once immediately (covers Render restarts/
- * missed runs), then every `intervalMs`.
+ * missed runs), then every `intervalMs`. An in-flight guard ensures a slow or
+ * stuck run is never overlapped by the next scheduled tick.
  */
 export function startRecordRetentionJob(
   intervalMs: number = DEFAULT_INTERVAL_MS
 ): NodeJS.Timeout {
-  void runRecordRetentionOnce();
-  return setInterval(() => {
-    void runRecordRetentionOnce();
-  }, intervalMs);
+  let isRunning = false;
+
+  const runIfIdle = (): void => {
+    if (isRunning) {
+      console.log("[RecordRetentionJob] Skipping run — a previous purge is still in progress.");
+      return;
+    }
+    isRunning = true;
+    void runRecordRetentionOnce().finally(() => {
+      isRunning = false;
+    });
+  };
+
+  runIfIdle();
+  return setInterval(runIfIdle, intervalMs);
 }
