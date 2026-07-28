@@ -3,8 +3,10 @@ import { Env } from "@/config/Env";
 import app from "@/app";
 import bot from "@/bot/Bot";
 import { registerCommands } from "@/bot/BotCommands";
+import { startRecordRetentionJob } from "@/jobs/RecordRetentionJob";
 
 registerCommands();
+startRecordRetentionJob();
 
 app.listen(Env.PORT, () => {
   console.log(`Server running on port ${Env.PORT} [${Env.NODE_ENV}]`);

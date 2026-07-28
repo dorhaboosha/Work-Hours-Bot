@@ -116,6 +116,18 @@ export async function upsertRecordByDate(
 }
 
 /**
+ * Deletes every daily_records row (any recordType, any user) whose workDate
+ * is strictly before `cutoff`. Returns the number of rows deleted.
+ * Used by the monthly retention purge — a single bulk deleteMany, no per-user loop.
+ */
+export async function deleteDailyRecordsBefore(cutoff: Date): Promise<number> {
+  const result = await prisma.dailyRecord.deleteMany({
+    where: { workDate: { lt: cutoff } },
+  });
+  return result.count;
+}
+
+/**
  * Lists all records for a user, optionally filtered to a date window.
  * `from` and `to` are UTC midnight Dates representing local workDates.
  */
