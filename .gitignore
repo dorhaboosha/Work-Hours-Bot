@@ -33,3 +33,6 @@ openspec/
 
 # docs
 docs/
+
+# Claude
+.claude/
