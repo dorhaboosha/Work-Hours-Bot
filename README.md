@@ -29,6 +29,7 @@ It was built as a backend-focused project with an emphasis on clean architecture
 - 🗄️ PostgreSQL database with Prisma ORM
 - 📊 Weekly and monthly work summaries
 - ⚙️ Configurable work schedules and timezone support
+- 🧹 Automatic monthly data retention purge
 - 🐳 Docker support for local development
 - 🚀 Deployable on Render
 
@@ -40,6 +41,7 @@ It was built as a backend-focused project with an emphasis on clean architecture
 - **Absence types** — sick, vacation, holiday, holiday eve, unpaid absence, and election (via the edit flow)
 - **Summaries** — weekly and monthly balance views against your configured required hours
 - **Settings** — one-time `/setup`, then `/settings` and `/settings_edit` for daily hours, workdays, and timezone
+- **Data retention** — daily records from past months are purged automatically; only the current month is kept (see [Data Retention](#data-retention))
 
 ## Commands
 
@@ -86,6 +88,15 @@ The application follows a layered architecture that separates presentation, busi
 
 Both the Telegram bot and the REST API share the same business service layer to keep the application modular and avoid duplicated logic.
 
+## Data Retention
+
+A background job (`backend/src/jobs/RecordRetentionJob.ts`) purges daily work records once they fall outside the current UTC month. It runs once on server startup and then every 24 hours, deleting any `daily_records` row dated before the first day of the current UTC month, for every user.
+
+- **Only the current month's records are retained** — once a month completes, its daily records are deleted and cannot be recovered.
+- The purge is idempotent: re-running it after a successful pass is a no-op.
+- A run failure is logged and swallowed; it does not crash the server, and the next scheduled run retries.
+- Weekly/monthly summaries generated before the purge reflect data that will no longer be queryable afterward.
+
 ## Tech Stack
 
 | Category | Technology |
@@ -111,6 +122,7 @@ WorkHours-Bot/
 │       ├── bot/             # Handlers, conversation flows, session store
 │       ├── constants/       # Time formats, timezones, edit actions, etc.
 │       ├── controllers/     # REST API controllers
+│       ├── jobs/            # Scheduled background jobs (e.g. record retention purge)
 │       ├── lang/            # botLabels.json (English bot messages)
 │       ├── middlewares/     # Express middleware (validation, error handling)
 │       ├── repositories/    # Data access layer (Prisma)
