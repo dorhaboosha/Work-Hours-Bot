@@ -4,9 +4,11 @@ services:
     container_name: workhours-bot-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: workhours
-      POSTGRES_PASSWORD: workhours_password
-      POSTGRES_DB: workhours_bot
+      # Override any of these via a root-level .env file or exported shell vars;
+      # these defaults just keep local dev zero-config.
+      POSTGRES_USER: ${POSTGRES_USER:-workhours}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-workhours_password}
+      POSTGRES_DB: ${POSTGRES_DB:-workhours_bot}
     ports:
       - "5435:5432"
     volumes:

@@ -74,7 +74,7 @@ describe("WorkdayService", async () => {
   let getDateRecord: any;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let mockFindOpenRecord: ReturnType<typeof mock.fn<any>>;
+  let mockFindOpenWorkRecord: ReturnType<typeof mock.fn<any>>;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let mockFindRecordByDate: ReturnType<typeof mock.fn<any>>;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -90,7 +90,7 @@ describe("WorkdayService", async () => {
 
   before(() => {
     // Default mock implementations (overridden per-test with mockImplementationOnce)
-    mockFindOpenRecord = mock.fn(async () => null);
+    mockFindOpenWorkRecord = mock.fn(async () => null);
     mockFindRecordByDate = mock.fn(async () => null);
     mockCreateDailyRecord = mock.fn(async (input: Record<string, unknown>) => ({
       id: "r-new",
@@ -124,7 +124,7 @@ describe("WorkdayService", async () => {
       path.join(__dirname, "../repositories/DailyRecordRepository")
     );
     injectCacheStub(repoKey, {
-      findOpenRecord: mockFindOpenRecord,
+      findOpenWorkRecord: mockFindOpenWorkRecord,
       findRecordByDate: mockFindRecordByDate,
       createDailyRecord: mockCreateDailyRecord,
       updateDailyRecord: mockUpdateDailyRecord,
@@ -168,7 +168,7 @@ describe("WorkdayService", async () => {
   });
 
   afterEach(() => {
-    mockFindOpenRecord?.mock.resetCalls();
+    mockFindOpenWorkRecord?.mock.resetCalls();
     mockFindRecordByDate?.mock.resetCalls();
     mockCreateDailyRecord?.mock.resetCalls();
     mockUpdateDailyRecord?.mock.resetCalls();
@@ -206,7 +206,7 @@ describe("WorkdayService", async () => {
     });
 
     it("does not create a record when one already exists for today (open)", async () => {
-      mockFindOpenRecord.mock.mockImplementationOnce(
+      mockFindOpenWorkRecord.mock.mockImplementationOnce(
         async () => makeTodayOpenRecord()
       );
 
@@ -223,7 +223,7 @@ describe("WorkdayService", async () => {
 
   describe("startWorkday – PREVIOUS_RECORD_STILL_OPEN guard", () => {
     it("throws when an open record exists from a previous local date", async () => {
-      mockFindOpenRecord.mock.mockImplementationOnce(
+      mockFindOpenWorkRecord.mock.mockImplementationOnce(
         async () => makePrevDayOpenRecord()
       );
 
@@ -257,7 +257,7 @@ describe("WorkdayService", async () => {
 
   describe("getTodayStatus – happy path", () => {
     it("returns WorkdayStatus with isActive:true for today's open record", async () => {
-      mockFindOpenRecord.mock.mockImplementationOnce(
+      mockFindOpenWorkRecord.mock.mockImplementationOnce(
         async () => makeTodayOpenRecord()
       );
 
@@ -271,7 +271,7 @@ describe("WorkdayService", async () => {
 
     it("clamps remainingMinutes to 0 when the user has already exceeded required hours", async () => {
       // startTime 10 hours ago → workedMinutesSoFar ≈ 600 > dailyRequiredMinutes (480)
-      mockFindOpenRecord.mock.mockImplementationOnce(
+      mockFindOpenWorkRecord.mock.mockImplementationOnce(
         async () => makeTodayOpenRecord(START_10H_AGO)
       );
 
@@ -293,7 +293,7 @@ describe("WorkdayService", async () => {
     });
 
     it("throws PREVIOUS_RECORD_STILL_OPEN when open record is from a prior date", async () => {
-      mockFindOpenRecord.mock.mockImplementationOnce(
+      mockFindOpenWorkRecord.mock.mockImplementationOnce(
         async () => makePrevDayOpenRecord()
       );
 
@@ -311,7 +311,7 @@ describe("WorkdayService", async () => {
 
   describe("endWorkday – today happy path", () => {
     it("closes the active record and returns EndWorkdayResult", async () => {
-      mockFindOpenRecord.mock.mockImplementationOnce(
+      mockFindOpenWorkRecord.mock.mockImplementationOnce(
         async () => makeTodayOpenRecord()
       );
 
@@ -329,7 +329,7 @@ describe("WorkdayService", async () => {
     });
 
     it("calls updateDailyRecord exactly once with a non-null endTime", async () => {
-      mockFindOpenRecord.mock.mockImplementationOnce(
+      mockFindOpenWorkRecord.mock.mockImplementationOnce(
         async () => makeTodayOpenRecord()
       );
 
@@ -424,7 +424,7 @@ describe("WorkdayService", async () => {
 
   describe("endWorkday – previous-day guard", () => {
     it("throws PREVIOUS_RECORD_STILL_OPEN when open record is from a prior date", async () => {
-      mockFindOpenRecord.mock.mockImplementationOnce(
+      mockFindOpenWorkRecord.mock.mockImplementationOnce(
         async () => makePrevDayOpenRecord()
       );
 

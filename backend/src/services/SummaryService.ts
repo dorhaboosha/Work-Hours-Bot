@@ -1,7 +1,7 @@
 import { DateTime } from "luxon";
 import type { Weekday } from "@shared/types/CoreTypes";
 import type { DailyRecord } from "@/generated/prisma/client";
-import { listRecordsByRange, findOpenRecord } from "@/repositories/DailyRecordRepository";
+import { listRecordsByRange, findOpenWorkRecord } from "@/repositories/DailyRecordRepository";
 import { getSettingsOrThrow } from "@/services/SettingsService";
 import { getLocalDate, utcToLocalDate } from "@/utils/DateUtils";
 import { calcWorkedMinutesSoFar } from "@/services/TimeCalculationService";
@@ -83,7 +83,7 @@ async function assertNoPreviousOpenRecord(
   telegramId: string,
   timezone: string
 ): Promise<void> {
-  const openRecord = await findOpenRecord(telegramId);
+  const openRecord = await findOpenWorkRecord(telegramId);
   if (openRecord === null) return;
 
   const openDateStr = utcToLocalDate(openRecord.workDate, timezone);

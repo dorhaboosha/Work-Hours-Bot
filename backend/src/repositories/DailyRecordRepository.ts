@@ -44,16 +44,6 @@ export async function findOpenWorkRecord(
   });
 }
 
-/**
- * @deprecated Use findOpenWorkRecord instead — absence records also have
- * endTime=null and would be returned by this query.
- */
-export async function findOpenRecord(
-  telegramId: string
-): Promise<DailyRecord | null> {
-  return findOpenWorkRecord(telegramId);
-}
-
 /** Looks up a record by its exact workDate (as a UTC midnight Date). */
 export async function findRecordByDate(
   telegramId: string,

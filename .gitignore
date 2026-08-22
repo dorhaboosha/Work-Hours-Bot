@@ -28,11 +28,5 @@ Thumbs.db
 # Docker volumes (local data)
 postgres_data/
 
-# OpenSpec
-openspec/
-
-# docs
-docs/
-
 # Claude
 .claude/
