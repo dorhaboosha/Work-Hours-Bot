@@ -8,6 +8,7 @@ import { handleBotError } from "@/bot/utils/handleBotError";
 import type { Weekday } from "@shared/types/CoreTypes";
 import { PREDEFINED_TIMEZONES } from "@/constants/timezones";
 import { parseWorkdayList } from "@/bot/utils/timeInputParser";
+import { isValidTimezone } from "@/utils/DateUtils";
 
 export async function handleSetupStep(
   ctx: Context,
@@ -69,8 +70,8 @@ export async function handleSetupStep(
     }
 
     case "setup:timezone_custom": {
-      if (!text) {
-        await ctx.reply(t("setup.askCustomTimezone"), { parse_mode: "Markdown" });
+      if (!text || !isValidTimezone(text)) {
+        await ctx.reply(t("setup.invalidCustomTimezone"), { parse_mode: "Markdown" });
         return;
       }
       await completeSetup(ctx, userId, { ...session.data, timezone: text });

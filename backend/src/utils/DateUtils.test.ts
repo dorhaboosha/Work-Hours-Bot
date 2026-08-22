@@ -1,6 +1,25 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { resolveDdMmToDate, localTimeToUtc, startOfCurrentUtcMonth } from "./DateUtils";
+import {
+  resolveDdMmToDate,
+  localTimeToUtc,
+  startOfCurrentUtcMonth,
+  isValidTimezone,
+} from "./DateUtils";
+
+describe("isValidTimezone", () => {
+  it("accepts recognized IANA zone names", () => {
+    assert.equal(isValidTimezone("Asia/Jerusalem"), true);
+    assert.equal(isValidTimezone("America/New_York"), true);
+    assert.equal(isValidTimezone("UTC"), true);
+  });
+
+  it("rejects garbage input", () => {
+    assert.equal(isValidTimezone("not-a-timezone"), false);
+    assert.equal(isValidTimezone(""), false);
+    assert.equal(isValidTimezone("GMT+3"), false);
+  });
+});
 
 describe("resolveDdMmToDate", () => {
   it("resolves dd-mm using the current year in the given timezone", () => {
