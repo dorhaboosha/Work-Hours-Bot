@@ -2,6 +2,21 @@ import { DateTime } from "luxon";
 import { AppError } from "@/utils/AppError";
 
 /**
+ * Returns true when `timezone` is a recognized IANA zone name (e.g.
+ * "Asia/Jerusalem"). Used to reject free-text timezone input before it's
+ * stored, since an invalid zone silently produces "Invalid DateTime" results
+ * from Luxon rather than a clear error.
+ */
+export function isValidTimezone(timezone: string): boolean {
+  try {
+    Intl.DateTimeFormat(undefined, { timeZone: timezone });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Returns today's local date as a YYYY-MM-DD string in the given timezone.
  * This is what gets stored as `workDate` on a new daily record.
  */

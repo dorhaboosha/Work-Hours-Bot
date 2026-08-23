@@ -3,6 +3,7 @@ import type { ErrorCode } from "@shared/types/ApiTypes";
 /** Maps each ErrorCode to its HTTP status code. */
 export const ERROR_HTTP_STATUS: Record<ErrorCode, number> = {
   VALIDATION_ERROR: 400,
+  UNAUTHORIZED: 401,
   USER_SETTINGS_NOT_FOUND: 404,
   SETUP_ALREADY_COMPLETED: 409,
   DAILY_RECORD_NOT_FOUND: 404,

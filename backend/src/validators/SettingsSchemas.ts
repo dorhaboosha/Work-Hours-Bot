@@ -1,4 +1,12 @@
 import { z } from "zod";
+import { isValidTimezone } from "@/utils/DateUtils";
+
+const timezoneSchema = z
+  .string()
+  .min(1, "timezone is required")
+  .refine(isValidTimezone, {
+    message: 'timezone must be a valid IANA timezone (e.g. "Asia/Jerusalem")',
+  });
 
 const weekdaySchema = z
   .number()
@@ -19,7 +27,7 @@ const workdaysSchema = z
 export const SetupSettingsSchema = z.object({
   telegramId: z.string().min(1, "telegramId is required"),
   dailyRequiredMinutes: dailyRequiredMinutesSchema,
-  timezone: z.string().min(1, "timezone is required"),
+  timezone: timezoneSchema,
   workdays: workdaysSchema,
 });
 
@@ -29,7 +37,7 @@ export type SetupSettingsInput = z.infer<typeof SetupSettingsSchema>;
 export const UpdateSettingsSchema = z
   .object({
     dailyRequiredMinutes: dailyRequiredMinutesSchema.optional(),
-    timezone: z.string().min(1, "timezone must not be empty").optional(),
+    timezone: timezoneSchema.optional(),
     workdays: workdaysSchema.optional(),
   })
   .refine(

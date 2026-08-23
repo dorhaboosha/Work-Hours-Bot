@@ -118,7 +118,7 @@ describe("SummaryService", async () => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let mockListRecords: ReturnType<typeof mock.fn<any>>;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let mockFindOpenRecord: ReturnType<typeof mock.fn<any>>;
+  let mockFindOpenWorkRecord: ReturnType<typeof mock.fn<any>>;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let mockGetSettingsOrThrow: ReturnType<typeof mock.fn<any>>;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -126,7 +126,7 @@ describe("SummaryService", async () => {
 
   before(() => {
     mockListRecords = mock.fn(async () => []);
-    mockFindOpenRecord = mock.fn(async () => null);
+    mockFindOpenWorkRecord = mock.fn(async () => null);
     mockGetSettingsOrThrow = mock.fn(async () => SETTINGS);
     mockGetLocalDate = mock.fn(() => FIXED_TODAY);
 
@@ -136,7 +136,7 @@ describe("SummaryService", async () => {
     );
     injectCacheStub(repoKey, {
       listRecordsByRange: mockListRecords,
-      findOpenRecord: mockFindOpenRecord,
+      findOpenWorkRecord: mockFindOpenWorkRecord,
     });
 
     // ── Inject SettingsService stub ───────────────────────────────────────────
@@ -181,7 +181,7 @@ describe("SummaryService", async () => {
 
   afterEach(() => {
     mockListRecords?.mock.resetCalls();
-    mockFindOpenRecord?.mock.resetCalls();
+    mockFindOpenWorkRecord?.mock.resetCalls();
     mockGetSettingsOrThrow?.mock.resetCalls();
     mockGetLocalDate?.mock.resetCalls();
   });
@@ -395,7 +395,7 @@ describe("SummaryService", async () => {
 
   describe("getWeekSummary – PREVIOUS_RECORD_STILL_OPEN guard", () => {
     it("throws when a prior-day record is still open", async () => {
-      mockFindOpenRecord.mock.mockImplementationOnce(
+      mockFindOpenWorkRecord.mock.mockImplementationOnce(
         async () => makeOpenRecord("2026-06-09") // yesterday vs FIXED_TODAY 2026-06-10
       );
       await assert.rejects(
@@ -408,7 +408,7 @@ describe("SummaryService", async () => {
     });
 
     it("does NOT throw when the open record is from today", async () => {
-      mockFindOpenRecord.mock.mockImplementationOnce(
+      mockFindOpenWorkRecord.mock.mockImplementationOnce(
         async () => makeOpenRecord(FIXED_TODAY)
       );
       mockListRecords.mock.mockImplementationOnce(async () => [
@@ -447,7 +447,7 @@ describe("SummaryService", async () => {
 
   describe("getMonthSummary – PREVIOUS_RECORD_STILL_OPEN guard", () => {
     it("throws when a prior-day record is still open", async () => {
-      mockFindOpenRecord.mock.mockImplementationOnce(
+      mockFindOpenWorkRecord.mock.mockImplementationOnce(
         async () => makeOpenRecord("2026-05-31") // previous month
       );
       await assert.rejects(

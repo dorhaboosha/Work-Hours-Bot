@@ -1,6 +1,6 @@
 import {
   createDailyRecord,
-  findOpenRecord,
+  findOpenWorkRecord,
   findRecordByDate,
   updateDailyRecord,
   listRecordsByRange,
@@ -45,7 +45,7 @@ export async function startWorkday(telegramId: string): Promise<DailyRecord> {
   const todayDate = localDateStringToUtcMidnight(todayStr);
 
   // Check for any open (unfinished) WORK record
-  const openRecord = await findOpenRecord(telegramId);
+  const openRecord = await findOpenWorkRecord(telegramId);
   if (openRecord !== null) {
     const openDateStr = utcToLocalDate(openRecord.workDate, settings.timezone);
     if (openDateStr !== todayStr) {
@@ -93,7 +93,7 @@ export async function getTodayStatus(
   const settings = await getSettingsOrThrow(telegramId);
   const todayStr = getLocalDate(settings.timezone);
 
-  const openRecord = await findOpenRecord(telegramId);
+  const openRecord = await findOpenWorkRecord(telegramId);
 
   if (openRecord !== null) {
     const openDateStr = utcToLocalDate(openRecord.workDate, settings.timezone);
@@ -147,7 +147,7 @@ export async function endWorkday(telegramId: string): Promise<EndWorkdayResult> 
   const todayStr = getLocalDate(settings.timezone);
   const todayDate = localDateStringToUtcMidnight(todayStr);
 
-  const openRecord = await findOpenRecord(telegramId);
+  const openRecord = await findOpenWorkRecord(telegramId);
   if (openRecord === null) {
     // No open record — check whether today already has a closed one
     const closedToday = await findRecordByDate(telegramId, todayDate);

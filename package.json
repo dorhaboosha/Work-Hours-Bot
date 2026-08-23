@@ -7,10 +7,17 @@
     "shared"
   ],
   "scripts": {
-    "dev": "npm run dev --workspace=backend"
+    "dev": "npm run dev --workspace=backend",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
   },
   "devDependencies": {
-    "openspec": "^0.0.0"
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.9.0",
+    "eslint-config-prettier": "^10.1.8",
+    "globals": "^17.11.0",
+    "prettier": "^3.9.6",
+    "typescript-eslint": "^8.67.0"
   }
 }
-
