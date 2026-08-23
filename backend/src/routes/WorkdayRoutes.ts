@@ -5,8 +5,8 @@ import {
   EndWorkdaySchema,
   DailyRecordsQuerySchema,
   RecordDayParamsSchema,
-  TelegramIdParamSchema,
 } from "@/validators/WorkdaySchemas";
+import { TelegramIdParamSchema } from "@/validators/CommonSchemas";
 import { EditDayParamsSchema, EditWorkdaySchema } from "@/validators/EditWorkdaySchemas";
 import {
   start,

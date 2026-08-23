@@ -8,13 +8,6 @@ export const StartWorkdaySchema = z.object({
 
 export type StartWorkdayInput = z.infer<typeof StartWorkdaySchema>;
 
-/** Path params schema for routes taking only :telegramId (e.g. GET /workdays/status/:telegramId) */
-export const TelegramIdParamSchema = z.object({
-  telegramId: z.string().min(1, "telegramId is required"),
-});
-
-export type TelegramIdParams = z.infer<typeof TelegramIdParamSchema>;
-
 /** POST /workdays/end — closes today's active workday; no manual time accepted */
 export const EndWorkdaySchema = z.object({
   telegramId: z.string().min(1, "telegramId is required"),

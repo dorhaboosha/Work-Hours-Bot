@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { validate } from "@/middlewares/ValidateMiddleware";
-import { TelegramIdParamSchema } from "@/validators/SummarySchemas";
+import { TelegramIdParamSchema } from "@/validators/CommonSchemas";
 import { weekSummary, monthSummary } from "@/controllers/SummaryController";
 
 const router = Router();

@@ -11,7 +11,6 @@ import summaryRouter from "@/routes/SummaryRoutes";
 const app = express();
 
 app.use(helmet());
-app.use(express.json());
 
 const apiRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -26,9 +25,11 @@ app.get("/health", (_req, res) => {
 
 const apiKeyMiddleware = createApiKeyMiddleware(Env.API_KEY);
 
-app.use("/api/settings", apiRateLimiter, apiKeyMiddleware, settingsRouter);
-app.use("/api/workdays", apiRateLimiter, apiKeyMiddleware, workdayRouter);
-app.use("/api/summaries", apiRateLimiter, apiKeyMiddleware, summaryRouter);
+// Rate limit + API key check run before body parsing, so an unauthenticated
+// request never gets its (possibly large/malformed) body parsed.
+app.use("/api/settings", apiRateLimiter, apiKeyMiddleware, express.json(), settingsRouter);
+app.use("/api/workdays", apiRateLimiter, apiKeyMiddleware, express.json(), workdayRouter);
+app.use("/api/summaries", apiRateLimiter, apiKeyMiddleware, express.json(), summaryRouter);
 
 app.use(errorMiddleware);
 
