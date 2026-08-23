@@ -8,7 +8,6 @@ import { calcWorkedMinutesSoFar } from "@/services/TimeCalculationService";
 import { AppError } from "@/utils/AppError";
 import type { WorkSummary } from "@shared/types/ViewTypes";
 import { getWeekWindow, getMonthWindow } from "@/utils/dateRangeUtils";
-import type { WeekWindow, MonthWindow } from "@/utils/dateRangeUtils";
 
 // ── Aggregation ───────────────────────────────────────────────────────────────
 

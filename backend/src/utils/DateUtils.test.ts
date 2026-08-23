@@ -1,5 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
+import { DateTime } from "luxon";
 import {
   resolveDdMmToDate,
   localTimeToUtc,
@@ -23,7 +24,6 @@ describe("isValidTimezone", () => {
 
 describe("resolveDdMmToDate", () => {
   it("resolves dd-mm using the current year in the given timezone", () => {
-    const { DateTime } = require("luxon") as typeof import("luxon");
     const timezone = "Asia/Jerusalem";
     const currentYear = DateTime.now().setZone(timezone).year;
 
@@ -33,7 +33,6 @@ describe("resolveDdMmToDate", () => {
   });
 
   it("handles single-digit day and month correctly", () => {
-    const { DateTime } = require("luxon") as typeof import("luxon");
     const timezone = "UTC";
     const currentYear = DateTime.now().setZone(timezone).year;
 

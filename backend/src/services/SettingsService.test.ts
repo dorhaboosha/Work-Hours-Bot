@@ -28,8 +28,6 @@ describe("SettingsService", async () => {
   let getSettingsOrThrow: any;
   let DEFAULT_TIMEZONE: string;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let DEFAULT_WORKDAYS: any[];
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let mockUpsert: ReturnType<typeof mock.fn<any>>;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let mockFind: ReturnType<typeof mock.fn<any>>;
@@ -68,7 +66,6 @@ describe("SettingsService", async () => {
     setupSettings = svc.setupSettings;
     getSettingsOrThrow = svc.getSettingsOrThrow;
     DEFAULT_TIMEZONE = svc.DEFAULT_TIMEZONE;
-    DEFAULT_WORKDAYS = svc.DEFAULT_WORKDAYS;
     baseSetupInput = { timezone: DEFAULT_TIMEZONE, workdays: [0, 1, 2, 3, 4] };
   });
 
