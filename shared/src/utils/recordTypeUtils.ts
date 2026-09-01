@@ -35,3 +35,30 @@ export function calculateCreditedMinutes(
       return 0;
   }
 }
+
+/**
+ * Maps an absence type to the leave balance it debits when marked, if any.
+ * Independent of calculateCreditedMinutes: the debited amount is a
+ * user-chosen number of leave-balance days, unrelated to how many work-
+ * minutes the day is credited for.
+ * - VACATION / HOLIDAY / HOLIDAY_EVE → vacationBalance
+ * - SICK                             → sickBalance
+ * - UNPAID_ABSENCE / ELECTION        → no balance debited
+ */
+export function getLeaveBalanceField(
+  recordType: AbsenceRecordType
+): "vacationBalance" | "sickBalance" | null {
+  switch (recordType) {
+    case "VACATION":
+    case "HOLIDAY":
+    case "HOLIDAY_EVE":
+      return "vacationBalance";
+
+    case "SICK":
+      return "sickBalance";
+
+    case "UNPAID_ABSENCE":
+    case "ELECTION":
+      return null;
+  }
+}

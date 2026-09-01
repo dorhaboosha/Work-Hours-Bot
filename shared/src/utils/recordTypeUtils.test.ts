@@ -1,6 +1,10 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { isAbsenceRecordType, calculateCreditedMinutes } from "./recordTypeUtils";
+import {
+  isAbsenceRecordType,
+  calculateCreditedMinutes,
+  getLeaveBalanceField,
+} from "./recordTypeUtils";
 
 describe("isAbsenceRecordType", () => {
   it("returns false for WORK", () => {
@@ -67,5 +71,31 @@ describe("calculateCreditedMinutes", () => {
     assert.equal(calculateCreditedMinutes("SICK", 480), 480);       // 8h exactly
     assert.equal(calculateCreditedMinutes("HOLIDAY_EVE", 480), 240); // 4h exactly
     assert.equal(calculateCreditedMinutes("UNPAID_ABSENCE", 480), 0);
+  });
+});
+
+describe("getLeaveBalanceField", () => {
+  it("maps VACATION to vacationBalance", () => {
+    assert.equal(getLeaveBalanceField("VACATION"), "vacationBalance");
+  });
+
+  it("maps HOLIDAY to vacationBalance", () => {
+    assert.equal(getLeaveBalanceField("HOLIDAY"), "vacationBalance");
+  });
+
+  it("maps HOLIDAY_EVE to vacationBalance", () => {
+    assert.equal(getLeaveBalanceField("HOLIDAY_EVE"), "vacationBalance");
+  });
+
+  it("maps SICK to sickBalance", () => {
+    assert.equal(getLeaveBalanceField("SICK"), "sickBalance");
+  });
+
+  it("maps UNPAID_ABSENCE to null (no balance debited)", () => {
+    assert.equal(getLeaveBalanceField("UNPAID_ABSENCE"), null);
+  });
+
+  it("maps ELECTION to null (no balance debited)", () => {
+    assert.equal(getLeaveBalanceField("ELECTION"), null);
   });
 });

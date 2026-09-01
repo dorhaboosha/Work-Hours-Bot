@@ -3,12 +3,15 @@ import { SessionStore } from "@/bot/session/SessionStore";
 import type { Session } from "@/bot/session/SessionStore";
 import { getSettingsOrThrow } from "@/services/SettingsService";
 import { setEndHour, setStartAndEndHours, markAbsence } from "@/services/EditWorkdayService";
-import { formatTime, formatMinutesAsDuration, formatBalance } from "@/bot/utils/formatMessage";
+import { formatTime, formatMinutesAsDuration, formatBalance, formatDecimalDays } from "@/bot/utils/formatMessage";
 import { t } from "@/i18n";
 import { handleBotError } from "@/bot/utils/handleBotError";
 import { HH_MM_RE, HH_MM_RANGE_RE } from "@/constants/timeFormats";
 import { ABSENCE_TYPES } from "@/constants/absenceTypes";
 import { type EditAction, EDIT_ACTION_MAP } from "@/constants/editActions";
+import { getLeaveBalanceField } from "@shared/utils/recordTypeUtils";
+import { isMultipleOfHalf } from "@shared/utils/numberUtils";
+import type { AbsenceRecordType } from "@shared/types/CoreTypes";
 
 export async function handleEditStep(
   ctx: Context,
@@ -126,6 +129,15 @@ export async function handleEditStep(
       }
 
       const absenceType = ABSENCE_TYPES[idx - 1];
+
+      if (getLeaveBalanceField(absenceType) !== null) {
+        // Debitable type — ask how many days to debit before saving.
+        const absenceLabel = t(`absenceType.${absenceType}`);
+        SessionStore.set(userId, { step: "edit:choose_debit_amount", data: { ddMm, absenceType } });
+        await ctx.reply(t("edit.promptDebitAmount", { absenceLabel }), { parse_mode: "Markdown" });
+        break;
+      }
+
       SessionStore.clear(userId);
       try {
         const settings = await getSettingsOrThrow(userId);
@@ -138,6 +150,54 @@ export async function handleEditStep(
           t("edit.absenceSaved", { date: ddMm, absenceLabel, creditedStr, balanceStr }),
           { parse_mode: "Markdown" }
         );
+      } catch (err) {
+        await handleBotError(ctx, err);
+      }
+      break;
+    }
+
+    case "edit:choose_debit_amount": {
+      const { ddMm, absenceType } = session.data;
+      if (!ddMm || !absenceType) { SessionStore.clear(userId); return; }
+
+      const debitDays = parseFloat(text);
+      if (isNaN(debitDays) || debitDays <= 0 || !isMultipleOfHalf(debitDays)) {
+        await ctx.reply(t("edit.invalidDebitAmount"), { parse_mode: "Markdown" });
+        return;
+      }
+
+      SessionStore.clear(userId);
+      try {
+        const result = await markAbsence(
+          userId,
+          ddMm,
+          absenceType as AbsenceRecordType,
+          debitDays
+        );
+        const absenceLabel = t(`absenceType.${absenceType}`);
+        const creditedStr = formatMinutesAsDuration(result.workedMinutes);
+        const balanceStr = formatBalance(result.balanceMinutes);
+
+        if (result.leaveDebit) {
+          const debitAmountStr = formatDecimalDays(result.leaveDebit.amount);
+          const newBalanceStr = formatDecimalDays(result.leaveDebit.newBalance);
+          await ctx.reply(
+            t("edit.absenceSavedWithDebit", {
+              date: ddMm,
+              absenceLabel,
+              creditedStr,
+              balanceStr,
+              debitAmountStr,
+              newBalanceStr,
+            }),
+            { parse_mode: "Markdown" }
+          );
+        } else {
+          await ctx.reply(
+            t("edit.absenceSaved", { date: ddMm, absenceLabel, creditedStr, balanceStr }),
+            { parse_mode: "Markdown" }
+          );
+        }
       } catch (err) {
         await handleBotError(ctx, err);
       }

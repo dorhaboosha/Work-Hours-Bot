@@ -97,7 +97,12 @@ export async function patchEditDay(
     } else if (input.action === "SET_START_AND_END_HOURS") {
       result = await setStartAndEndHours(telegramId, date, input.startTime, input.endTime);
     } else {
-      result = await markAbsence(telegramId, date, input.recordType as AbsenceRecordType);
+      result = await markAbsence(
+        telegramId,
+        date,
+        input.recordType as AbsenceRecordType,
+        input.debitDays
+      );
     }
 
     res.status(200).json(success(result));
