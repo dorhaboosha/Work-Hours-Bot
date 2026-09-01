@@ -33,6 +33,9 @@
   "month": {
     "summary": "🗓 *Monthly summary*\n📆 Month: *{{month}}*\n\n📋 Workdays:  *{{workdaysCount}}*\n⏱ Required:  *{{requiredStr}}*\n✅ Worked:    *{{workedStr}}*\n{{balanceEmoji}} Balance:   *{{balanceStr}}*"
   },
+  "balance": {
+    "summary": "Vacation days: {{vacationBalance}}\nSickness days: {{sickBalance}}"
+  },
   "settings": {
     "display": "⚙️ *Your current settings*\n\n📋 Daily hours:      *{{dailyHoursStr}}*\n📅 Workdays:         *{{workdaysStr}}*\n🌍 Timezone:         *{{timezone}}*\n🌴 Vacation rate:    *{{vacationRateStr}}/month*\n🤒 Sick rate:        *{{sickRateStr}}/month*"
   },
@@ -75,7 +78,7 @@
     "invalidAskVacationBalance": "❌ Please enter a number that's a multiple of 0.5 (e.g. `-2.5`, `0`, `4`).",
     "invalidAskSickBalance": "❌ Please enter a number that's a multiple of 0.5 (e.g. `-2.5`, `0`, `4`)."
   },
-  "help": "📖 *WorkHours Bot — Available commands*\n\n/start          — Start today's workday\n/status         — Show today's active status\n/end            — End today's active workday\n/record         — View today's record\n/record dd-mm   — View record for a specific date\n/edit dd-mm     — Edit or fix a specific date\n/week           — Show current week summary\n/month          — Show current month summary\n/settings       — Show current settings\n/settings\\_edit — Edit settings\n/help           — Show this message",
+  "help": "📖 *WorkHours Bot — Available commands*\n\n/start          — Start today's workday\n/status         — Show today's active status\n/end            — End today's active workday\n/record         — View today's record\n/record dd-mm   — View record for a specific date\n/edit dd-mm     — Edit or fix a specific date\n/week           — Show current week summary\n/month          — Show current month summary\n/balance        — Show vacation/sick day balances\n/settings       — Show current settings\n/settings\\_edit — Edit settings\n/help           — Show this message",
   "edit": {
     "openRecord": "📋 *{{date}} — open workday*\n\nWhat do you want to do?\n\n1. Set end hour\n2. Set start and end hours\n3. Mark absence\n4. Cancel",
     "noRecord": "📋 *No record found for {{date}}*\n\nWhat do you want to do?\n\n1. Set start and end hours\n2. Mark absence\n3. Cancel",
