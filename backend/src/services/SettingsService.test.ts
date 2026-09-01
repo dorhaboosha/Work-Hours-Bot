@@ -29,6 +29,8 @@ describe("SettingsService", async () => {
   let DEFAULT_TIMEZONE: string;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let DEFAULT_WORKDAYS: any[];
+  let DEFAULT_VACATION_ACCRUAL_RATE: number;
+  let DEFAULT_SICK_ACCRUAL_RATE: number;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let mockUpsert: ReturnType<typeof mock.fn<any>>;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -69,6 +71,8 @@ describe("SettingsService", async () => {
     getSettingsOrThrow = svc.getSettingsOrThrow;
     DEFAULT_TIMEZONE = svc.DEFAULT_TIMEZONE;
     DEFAULT_WORKDAYS = svc.DEFAULT_WORKDAYS;
+    DEFAULT_VACATION_ACCRUAL_RATE = svc.DEFAULT_VACATION_ACCRUAL_RATE;
+    DEFAULT_SICK_ACCRUAL_RATE = svc.DEFAULT_SICK_ACCRUAL_RATE;
     baseSetupInput = { timezone: DEFAULT_TIMEZONE, workdays: [0, 1, 2, 3, 4] };
   });
 
@@ -129,6 +133,63 @@ describe("SettingsService", async () => {
       });
 
       assert.deepEqual(mockUpsert.mock.calls[0].arguments[0].workdays, [1, 2, 3, 4, 5]);
+    });
+  });
+
+  // ── setupSettings – leave accrual initialization ─────────────────────────────
+
+  describe("setupSettings – leave accrual initialization", () => {
+    it("defaults vacationAccrualRate/sickAccrualRate when not provided", async () => {
+      await setupSettings({ telegramId: "7", dailyHoursOrMinutes: 480, ...baseSetupInput });
+
+      assert.equal(
+        mockUpsert.mock.calls[0].arguments[0].vacationAccrualRate,
+        DEFAULT_VACATION_ACCRUAL_RATE
+      );
+      assert.equal(
+        mockUpsert.mock.calls[0].arguments[0].sickAccrualRate,
+        DEFAULT_SICK_ACCRUAL_RATE
+      );
+    });
+
+    it("passes through custom vacationAccrualRate/sickAccrualRate when provided", async () => {
+      await setupSettings({
+        telegramId: "8",
+        dailyHoursOrMinutes: 480,
+        ...baseSetupInput,
+        vacationAccrualRate: 2,
+        sickAccrualRate: 0.5,
+      });
+
+      assert.equal(mockUpsert.mock.calls[0].arguments[0].vacationAccrualRate, 2);
+      assert.equal(mockUpsert.mock.calls[0].arguments[0].sickAccrualRate, 0.5);
+    });
+
+    it("initializes accrualAnchorAt and accrualAppliedThrough as Dates", async () => {
+      await setupSettings({ telegramId: "9", dailyHoursOrMinutes: 480, ...baseSetupInput });
+
+      const args = mockUpsert.mock.calls[0].arguments[0];
+      assert.ok(args.accrualAnchorAt instanceof Date);
+      assert.ok(args.accrualAppliedThrough instanceof Date);
+    });
+
+    it("sets accrualAppliedThrough to the start of the current month in the given timezone", async () => {
+      const { DateTime } = require("luxon") as typeof import("luxon");
+      const timezone = "UTC";
+      const expectedMonthStart = DateTime.now().setZone(timezone).startOf("month").toUTC().toJSDate();
+
+      await setupSettings({
+        telegramId: "10",
+        dailyHoursOrMinutes: 480,
+        timezone,
+        workdays: [0, 1, 2, 3, 4],
+      });
+
+      const args = mockUpsert.mock.calls[0].arguments[0];
+      assert.equal(
+        (args.accrualAppliedThrough as Date).toISOString(),
+        expectedMonthStart.toISOString()
+      );
     });
   });
 

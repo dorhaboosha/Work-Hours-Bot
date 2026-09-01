@@ -1,13 +1,22 @@
 import type { Context } from "telegraf";
 import { SessionStore } from "@/bot/session/SessionStore";
 import type { Session } from "@/bot/session/SessionStore";
-import { setupSettings } from "@/services/SettingsService";
+import {
+  setupSettings,
+  DEFAULT_VACATION_ACCRUAL_RATE,
+  DEFAULT_SICK_ACCRUAL_RATE,
+} from "@/services/SettingsService";
 import { formatMinutesAsDuration } from "@/bot/utils/formatMessage";
 import { t, formatWorkdays } from "@/i18n";
 import { handleBotError } from "@/bot/utils/handleBotError";
 import type { Weekday } from "@shared/types/CoreTypes";
 import { PREDEFINED_TIMEZONES } from "@/constants/timezones";
 import { parseWorkdayList } from "@/bot/utils/timeInputParser";
+
+/** "skip" (any case) or empty input means "use the default rate". */
+function isSkip(text: string): boolean {
+  return text === "" || text.toLowerCase() === "skip";
+}
 
 export async function handleSetupStep(
   ctx: Context,
@@ -58,7 +67,8 @@ export async function handleSetupStep(
       const choice = parseInt(text, 10);
       if (choice >= 1 && choice <= 4) {
         const timezone = PREDEFINED_TIMEZONES[choice - 1];
-        await completeSetup(ctx, userId, { ...session.data, timezone });
+        SessionStore.set(userId, { step: "setup:vacation_rate", data: { ...session.data, timezone } });
+        await ctx.reply(t("setup.askVacationRate"), { parse_mode: "Markdown" });
       } else if (text === "5") {
         SessionStore.set(userId, { step: "setup:timezone_custom", data: session.data });
         await ctx.reply(t("setup.askCustomTimezone"), { parse_mode: "Markdown" });
@@ -73,7 +83,37 @@ export async function handleSetupStep(
         await ctx.reply(t("setup.askCustomTimezone"), { parse_mode: "Markdown" });
         return;
       }
-      await completeSetup(ctx, userId, { ...session.data, timezone: text });
+      SessionStore.set(userId, { step: "setup:vacation_rate", data: { ...session.data, timezone: text } });
+      await ctx.reply(t("setup.askVacationRate"), { parse_mode: "Markdown" });
+      break;
+    }
+
+    case "setup:vacation_rate": {
+      let vacationAccrualRate = DEFAULT_VACATION_ACCRUAL_RATE;
+      if (!isSkip(text)) {
+        const parsed = parseFloat(text);
+        if (isNaN(parsed) || parsed < 0) {
+          await ctx.reply(t("setup.invalidVacationRate"), { parse_mode: "Markdown" });
+          return;
+        }
+        vacationAccrualRate = parsed;
+      }
+      SessionStore.set(userId, { step: "setup:sick_rate", data: { ...session.data, vacationAccrualRate } });
+      await ctx.reply(t("setup.askSickRate"), { parse_mode: "Markdown" });
+      break;
+    }
+
+    case "setup:sick_rate": {
+      let sickAccrualRate = DEFAULT_SICK_ACCRUAL_RATE;
+      if (!isSkip(text)) {
+        const parsed = parseFloat(text);
+        if (isNaN(parsed) || parsed < 0) {
+          await ctx.reply(t("setup.invalidSickRate"), { parse_mode: "Markdown" });
+          return;
+        }
+        sickAccrualRate = parsed;
+      }
+      await completeSetup(ctx, userId, { ...session.data, sickAccrualRate });
       break;
     }
   }
@@ -83,7 +123,13 @@ export async function handleSetupStep(
 async function completeSetup(
   ctx: Context,
   userId: string,
-  data: { hours?: number; workdays?: number[]; timezone?: string }
+  data: {
+    hours?: number;
+    workdays?: number[];
+    timezone?: string;
+    vacationAccrualRate?: number;
+    sickAccrualRate?: number;
+  }
 ): Promise<void> {
   SessionStore.clear(userId);
   try {
@@ -92,6 +138,8 @@ async function completeSetup(
       dailyHoursOrMinutes: data.hours!,
       workdays: data.workdays! as Weekday[],
       timezone: data.timezone!,
+      vacationAccrualRate: data.vacationAccrualRate,
+      sickAccrualRate: data.sickAccrualRate,
     });
 
     const dailyHoursStr = formatMinutesAsDuration(settings.dailyRequiredMinutes);

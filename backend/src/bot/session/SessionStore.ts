@@ -12,6 +12,8 @@ export type SessionStep =
   | "setup:workdays_custom"
   | "setup:timezone"
   | "setup:timezone_custom"
+  | "setup:vacation_rate"
+  | "setup:sick_rate"
   // /settings_edit multi-step
   | "settings_edit:choose_field"
   | "settings_edit:hours"
@@ -30,6 +32,8 @@ export interface SessionData {
   hours?: number;
   workdays?: number[];
   timezone?: string;
+  vacationAccrualRate?: number;
+  sickAccrualRate?: number;
   /** Preserved during /edit flow */
   ddMm?: string;
   /** EditRecordState string from the initial getEditDayOptions call */

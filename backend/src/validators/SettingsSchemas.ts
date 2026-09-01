@@ -15,12 +15,23 @@ const workdaysSchema = z
   .array(weekdaySchema)
   .min(1, "workdays must contain at least one day");
 
+/**
+ * Vacation/sick accrual rate (days credited per elapsed calendar month).
+ * Not restricted to multiples of 0.5 — only balances and mark-absence debit
+ * amounts carry that restriction.
+ */
+const accrualRateSchema = z
+  .number()
+  .nonnegative("accrual rate must be zero or greater");
+
 /** POST /settings/setup — first-time setup only */
 export const SetupSettingsSchema = z.object({
   telegramId: z.string().min(1, "telegramId is required"),
   dailyRequiredMinutes: dailyRequiredMinutesSchema,
   timezone: z.string().min(1, "timezone is required"),
   workdays: workdaysSchema,
+  vacationAccrualRate: accrualRateSchema.optional(),
+  sickAccrualRate: accrualRateSchema.optional(),
 });
 
 export type SetupSettingsInput = z.infer<typeof SetupSettingsSchema>;

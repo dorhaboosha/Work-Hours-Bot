@@ -1,3 +1,4 @@
+import { DateTime } from "luxon";
 import type { UserSettings } from "@/generated/prisma/client";
 import {
   findUserSettingsByTelegramId,
@@ -15,6 +16,12 @@ export const DEFAULT_WORKDAYS: Weekday[] = [0, 1, 2, 3, 4];
 /** MVP default timezone */
 export const DEFAULT_TIMEZONE = "Asia/Jerusalem";
 
+/** Default vacation days accrued per elapsed calendar month. */
+export const DEFAULT_VACATION_ACCRUAL_RATE = 1;
+
+/** Default sick days accrued per elapsed calendar month. */
+export const DEFAULT_SICK_ACCRUAL_RATE = 1.5;
+
 export interface SetupInput {
   telegramId: string;
   /**
@@ -25,6 +32,10 @@ export interface SetupInput {
   dailyHoursOrMinutes: number;
   timezone: string;
   workdays: Weekday[];
+  /** Vacation days accrued per elapsed calendar month. Defaults to DEFAULT_VACATION_ACCRUAL_RATE. */
+  vacationAccrualRate?: number;
+  /** Sick days accrued per elapsed calendar month. Defaults to DEFAULT_SICK_ACCRUAL_RATE. */
+  sickAccrualRate?: number;
 }
 
 /**
@@ -51,11 +62,26 @@ export async function setupSettings(
       ? decimalHoursToMinutes(dailyHoursOrMinutes)
       : Math.round(dailyHoursOrMinutes);
 
+  const vacationAccrualRate = input.vacationAccrualRate ?? DEFAULT_VACATION_ACCRUAL_RATE;
+  const sickAccrualRate = input.sickAccrualRate ?? DEFAULT_SICK_ACCRUAL_RATE;
+
+  // Initialize the leave-accrual clock at the moment setup completes: the
+  // anchor is "now", and the first month is considered already-applied (accrual
+  // only starts counting from the next calendar-month boundary in the user's
+  // timezone — see accrualUtils.computeLeaveAccrualCatchUp).
+  const now = DateTime.now().setZone(timezone);
+  const accrualAnchorAt = now.toUTC().toJSDate();
+  const accrualAppliedThrough = now.startOf("month").toUTC().toJSDate();
+
   return upsertUserSettings({
     telegramId,
     dailyRequiredMinutes,
     timezone,
     workdays,
+    vacationAccrualRate,
+    sickAccrualRate,
+    accrualAnchorAt,
+    accrualAppliedThrough,
   });
 }
 

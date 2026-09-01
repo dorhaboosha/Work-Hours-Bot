@@ -16,6 +16,8 @@ export async function setup(
       dailyHoursOrMinutes: input.dailyRequiredMinutes,
       timezone: input.timezone,
       workdays: input.workdays as Weekday[],
+      vacationAccrualRate: input.vacationAccrualRate,
+      sickAccrualRate: input.sickAccrualRate,
     });
     res.status(201).json(success(settings));
   } catch (err) {

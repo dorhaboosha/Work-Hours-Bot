@@ -6,6 +6,10 @@ export interface UpsertUserSettingsData {
   dailyRequiredMinutes: number;
   timezone: string;
   workdays: number[];
+  vacationAccrualRate: number;
+  sickAccrualRate: number;
+  accrualAnchorAt: Date;
+  accrualAppliedThrough: Date;
 }
 
 export interface UpdateUserSettingsData {
@@ -23,12 +27,30 @@ export async function findUserSettingsByTelegramId(
 export async function upsertUserSettings(
   input: UpsertUserSettingsData
 ): Promise<UserSettings> {
-  const { telegramId, dailyRequiredMinutes, timezone, workdays } = input;
+  const {
+    telegramId,
+    dailyRequiredMinutes,
+    timezone,
+    workdays,
+    vacationAccrualRate,
+    sickAccrualRate,
+    accrualAnchorAt,
+    accrualAppliedThrough,
+  } = input;
+  const payload = {
+    dailyRequiredMinutes,
+    timezone,
+    workdays,
+    vacationAccrualRate,
+    sickAccrualRate,
+    accrualAnchorAt,
+    accrualAppliedThrough,
+  };
 
   return prisma.userSettings.upsert({
     where: { telegramId },
-    update: { dailyRequiredMinutes, timezone, workdays },
-    create: { telegramId, dailyRequiredMinutes, timezone, workdays },
+    update: payload,
+    create: { telegramId, ...payload },
   });
 }
 
