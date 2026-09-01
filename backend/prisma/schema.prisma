@@ -13,6 +13,16 @@ model UserSettings {
   dailyRequiredMinutes Int      @map("daily_required_minutes")
   timezone             String
   workdays             Int[]
+
+  // Leave accrual (vacation/sick balance tracking)
+  vacationAccrualRate   Float     @default(1)   @map("vacation_accrual_rate")
+  sickAccrualRate       Float     @default(1.5) @map("sick_accrual_rate")
+  vacationBalance       Float     @default(0)   @map("vacation_balance")
+  sickBalance           Float     @default(0)   @map("sick_balance")
+  // Internal bookkeeping for lazy monthly accrual catch-up; not exposed to users.
+  accrualAnchorAt       DateTime? @map("accrual_anchor_at")
+  accrualAppliedThrough DateTime? @map("accrual_applied_through")
+
   createdAt            DateTime @default(now()) @map("created_at")
   updatedAt            DateTime @updatedAt @map("updated_at")
 
