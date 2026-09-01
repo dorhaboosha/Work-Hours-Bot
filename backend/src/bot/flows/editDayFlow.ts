@@ -8,7 +8,7 @@ import { t } from "@/i18n";
 import { handleBotError } from "@/bot/utils/handleBotError";
 import { HH_MM_RE, HH_MM_RANGE_RE } from "@/constants/timeFormats";
 import { ABSENCE_TYPES } from "@/constants/absenceTypes";
-import { type EditAction, EDIT_ACTION_MAP } from "@/constants/editActions";
+import { EDIT_ACTION_MAP } from "@/constants/editActions";
 import { getLeaveBalanceField } from "@shared/utils/recordTypeUtils";
 import { isMultipleOfHalf } from "@shared/utils/numberUtils";
 import type { AbsenceRecordType } from "@shared/types/CoreTypes";
@@ -140,7 +140,7 @@ export async function handleEditStep(
 
       SessionStore.clear(userId);
       try {
-        const settings = await getSettingsOrThrow(userId);
+        await getSettingsOrThrow(userId);
         const result = await markAbsence(userId, ddMm, absenceType);
         const absenceLabel = t(`absenceType.${absenceType}`);
         const creditedStr = formatMinutesAsDuration(result.workedMinutes);

@@ -10,6 +10,7 @@ import { isMultipleOfHalf } from "@shared/utils/numberUtils";
 import type { Weekday } from "@shared/types/CoreTypes";
 import { PREDEFINED_TIMEZONES } from "@/constants/timezones";
 import { parseWorkdayList } from "@/bot/utils/timeInputParser";
+import { isValidTimezone } from "@/utils/DateUtils";
 
 export async function handleSettingsEditStep(
   ctx: Context,
@@ -103,8 +104,8 @@ export async function handleSettingsEditStep(
     }
 
     case "settings_edit:timezone_custom": {
-      if (!text) {
-        await ctx.reply(t("settingsEdit.askCustomTimezone"), { parse_mode: "Markdown" });
+      if (!text || !isValidTimezone(text)) {
+        await ctx.reply(t("settingsEdit.invalidCustomTimezone"), { parse_mode: "Markdown" });
         return;
       }
       await applySettingsUpdate(ctx, userId, { timezone: text });

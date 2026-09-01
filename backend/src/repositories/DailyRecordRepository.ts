@@ -44,16 +44,6 @@ export async function findOpenWorkRecord(
   });
 }
 
-/**
- * @deprecated Use findOpenWorkRecord instead — absence records also have
- * endTime=null and would be returned by this query.
- */
-export async function findOpenRecord(
-  telegramId: string
-): Promise<DailyRecord | null> {
-  return findOpenWorkRecord(telegramId);
-}
-
 /** Looks up a record by its exact workDate (as a UTC midnight Date). */
 export async function findRecordByDate(
   telegramId: string,
@@ -113,6 +103,18 @@ export async function upsertRecordByDate(
     update: payload,
     create: { telegramId, workDate, ...payload },
   });
+}
+
+/**
+ * Deletes every daily_records row (any recordType, any user) whose workDate
+ * is strictly before `cutoff`. Returns the number of rows deleted.
+ * Used by the monthly retention purge — a single bulk deleteMany, no per-user loop.
+ */
+export async function deleteDailyRecordsBefore(cutoff: Date): Promise<number> {
+  const result = await prisma.dailyRecord.deleteMany({
+    where: { workDate: { lt: cutoff } },
+  });
+  return result.count;
 }
 
 /**

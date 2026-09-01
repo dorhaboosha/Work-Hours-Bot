@@ -12,6 +12,7 @@ import { handleBotError } from "@/bot/utils/handleBotError";
 import type { Weekday } from "@shared/types/CoreTypes";
 import { PREDEFINED_TIMEZONES } from "@/constants/timezones";
 import { parseWorkdayList } from "@/bot/utils/timeInputParser";
+import { isValidTimezone } from "@/utils/DateUtils";
 
 /** "skip" (any case) or empty input means "use the default rate". */
 function isSkip(text: string): boolean {
@@ -79,8 +80,8 @@ export async function handleSetupStep(
     }
 
     case "setup:timezone_custom": {
-      if (!text) {
-        await ctx.reply(t("setup.askCustomTimezone"), { parse_mode: "Markdown" });
+      if (!text || !isValidTimezone(text)) {
+        await ctx.reply(t("setup.invalidCustomTimezone"), { parse_mode: "Markdown" });
         return;
       }
       SessionStore.set(userId, { step: "setup:vacation_rate", data: { ...session.data, timezone: text } });

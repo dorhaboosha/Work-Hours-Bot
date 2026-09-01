@@ -6,6 +6,7 @@ import {
   DailyRecordsQuerySchema,
   RecordDayParamsSchema,
 } from "@/validators/WorkdaySchemas";
+import { TelegramIdParamSchema } from "@/validators/CommonSchemas";
 import { EditDayParamsSchema, EditWorkdaySchema } from "@/validators/EditWorkdaySchemas";
 import {
   start,
@@ -21,7 +22,7 @@ const router = Router();
 
 router.post("/start", validate(StartWorkdaySchema), start);
 // Static sub-paths must be declared before /:telegramId to avoid being shadowed
-router.get("/status/:telegramId", status);
+router.get("/status/:telegramId", validate(TelegramIdParamSchema, "params"), status);
 router.get("/record/:telegramId/:date", validate(RecordDayParamsSchema, "params"), getRecord);
 router.get("/edit/:telegramId/:date", validate(EditDayParamsSchema, "params"), getEditDay);
 router.patch("/edit/:telegramId/:date", validate(EditDayParamsSchema, "params"), validate(EditWorkdaySchema), patchEditDay);

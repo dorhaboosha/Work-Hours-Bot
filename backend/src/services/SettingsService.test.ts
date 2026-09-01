@@ -29,8 +29,6 @@ describe("SettingsService", async () => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let getSettingsOrThrow: any;
   let DEFAULT_TIMEZONE: string;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let DEFAULT_WORKDAYS: any[];
   let DEFAULT_VACATION_ACCRUAL_RATE: number;
   let DEFAULT_SICK_ACCRUAL_RATE: number;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -90,7 +88,6 @@ describe("SettingsService", async () => {
     updateSettings = svc.updateSettings;
     getSettingsOrThrow = svc.getSettingsOrThrow;
     DEFAULT_TIMEZONE = svc.DEFAULT_TIMEZONE;
-    DEFAULT_WORKDAYS = svc.DEFAULT_WORKDAYS;
     DEFAULT_VACATION_ACCRUAL_RATE = svc.DEFAULT_VACATION_ACCRUAL_RATE;
     DEFAULT_SICK_ACCRUAL_RATE = svc.DEFAULT_SICK_ACCRUAL_RATE;
     baseSetupInput = { timezone: DEFAULT_TIMEZONE, workdays: [0, 1, 2, 3, 4] };

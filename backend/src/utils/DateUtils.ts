@@ -2,6 +2,21 @@ import { DateTime } from "luxon";
 import { AppError } from "@/utils/AppError";
 
 /**
+ * Returns true when `timezone` is a recognized IANA zone name (e.g.
+ * "Asia/Jerusalem"). Used to reject free-text timezone input before it's
+ * stored, since an invalid zone silently produces "Invalid DateTime" results
+ * from Luxon rather than a clear error.
+ */
+export function isValidTimezone(timezone: string): boolean {
+  try {
+    Intl.DateTimeFormat(undefined, { timeZone: timezone });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Returns today's local date as a YYYY-MM-DD string in the given timezone.
  * This is what gets stored as `workDate` on a new daily record.
  */
@@ -97,6 +112,18 @@ export function manualEndTimeToUtc(
     millisecond: 0,
   });
   return dt.toUTC().toJSDate();
+}
+
+/**
+ * Returns UTC midnight of the first day of the month containing `now`.
+ * Used as the retention-purge cutoff: any daily_records row with workDate
+ * strictly before this Date belongs to a fully-completed past month.
+ *
+ * Calendar-aware (via Luxon's `startOf("month")`), not day-count arithmetic,
+ * so it is correct for every month length and leap years with no special-casing.
+ */
+export function startOfCurrentUtcMonth(now: Date = new Date()): Date {
+  return DateTime.fromJSDate(now, { zone: "utc" }).startOf("month").toJSDate();
 }
 
 /**
