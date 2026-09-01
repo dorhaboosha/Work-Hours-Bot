@@ -22,3 +22,15 @@ export function formatBalance(minutes: number): string {
   const formatted = formatMinutesAsDuration(minutes);
   return minutes > 0 ? `+${formatted}` : formatted;
 }
+
+/**
+ * Formats a day-count value (leave accrual rate or leave balance) as a plain
+ * decimal string: whole numbers show no decimal, halves show exactly one
+ * decimal place. Negative values keep their "-" sign; no unary "+" prefix
+ * (unlike formatBalance) since these are plain counts, not deltas.
+ * Examples: 1 -> "1", 1.5 -> "1.5", -2.5 -> "-2.5", 0 -> "0"
+ */
+export function formatDecimalDays(value: number): string {
+  const rounded = Math.round(value * 10) / 10;
+  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
+}

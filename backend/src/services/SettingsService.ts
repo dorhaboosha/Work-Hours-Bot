@@ -89,11 +89,21 @@ export interface UpdateSettingsInput {
   dailyRequiredMinutes?: number;
   timezone?: string;
   workdays?: Weekday[];
+  vacationAccrualRate?: number;
+  sickAccrualRate?: number;
+  /** Directly overwrites the current vacation balance. May be negative. Multiple of 0.5. */
+  vacationBalance?: number;
+  /** Directly overwrites the current sick balance. May be negative. Multiple of 0.5. */
+  sickBalance?: number;
 }
 
 /**
  * Partial update for /settings_edit. Throws USER_SETTINGS_NOT_FOUND when the
  * user has no settings yet — they should run /setup first.
+ *
+ * Balance fields are plain overwrites, independent of the accrual bookkeeping
+ * (accrualAnchorAt/accrualAppliedThrough are left untouched) — accrual keeps
+ * applying correctly on top of a manually-set balance at the next lazy touch.
  */
 export async function updateSettings(
   telegramId: string,
@@ -107,6 +117,16 @@ export async function updateSettings(
     }),
     ...(input.timezone !== undefined && { timezone: input.timezone }),
     ...(input.workdays !== undefined && { workdays: input.workdays }),
+    ...(input.vacationAccrualRate !== undefined && {
+      vacationAccrualRate: input.vacationAccrualRate,
+    }),
+    ...(input.sickAccrualRate !== undefined && {
+      sickAccrualRate: input.sickAccrualRate,
+    }),
+    ...(input.vacationBalance !== undefined && {
+      vacationBalance: input.vacationBalance,
+    }),
+    ...(input.sickBalance !== undefined && { sickBalance: input.sickBalance }),
   };
 
   return updateUserSettings(telegramId, data);

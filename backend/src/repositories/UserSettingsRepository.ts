@@ -16,6 +16,10 @@ export interface UpdateUserSettingsData {
   dailyRequiredMinutes?: number;
   timezone?: string;
   workdays?: number[];
+  vacationAccrualRate?: number;
+  sickAccrualRate?: number;
+  vacationBalance?: number;
+  sickBalance?: number;
 }
 
 export async function findUserSettingsByTelegramId(

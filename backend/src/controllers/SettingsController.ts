@@ -37,6 +37,10 @@ export async function updateByTelegramId(
       dailyRequiredMinutes: input.dailyRequiredMinutes,
       timezone: input.timezone,
       workdays: input.workdays as Weekday[] | undefined,
+      vacationAccrualRate: input.vacationAccrualRate,
+      sickAccrualRate: input.sickAccrualRate,
+      vacationBalance: input.vacationBalance,
+      sickBalance: input.sickBalance,
     });
     res.status(200).json(success(settings));
   } catch (err) {

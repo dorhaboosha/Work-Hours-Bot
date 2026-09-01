@@ -2,10 +2,11 @@ import { utcToLocalTime } from "@/utils/DateUtils";
 import {
   formatMinutesAsDuration,
   formatBalance,
+  formatDecimalDays,
 } from "@shared/utils/formatUtils";
 
 // Re-export shared helpers so handlers only need one import path
-export { formatMinutesAsDuration, formatBalance };
+export { formatMinutesAsDuration, formatBalance, formatDecimalDays };
 
 /**
  * Converts a UTC ISO timestamp (or Date) to a local HH:mm string in the given

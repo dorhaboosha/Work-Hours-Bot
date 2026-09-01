@@ -25,6 +25,8 @@ describe("SettingsService", async () => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let setupSettings: any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let updateSettings: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let getSettingsOrThrow: any;
   let DEFAULT_TIMEZONE: string;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -33,6 +35,8 @@ describe("SettingsService", async () => {
   let DEFAULT_SICK_ACCRUAL_RATE: number;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let mockUpsert: ReturnType<typeof mock.fn<any>>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let mockUpdate: ReturnType<typeof mock.fn<any>>;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let mockFind: ReturnType<typeof mock.fn<any>>;
   let baseSetupInput: { timezone: string; workdays: number[] };
@@ -49,6 +53,20 @@ describe("SettingsService", async () => {
     }));
 
     mockFind = mock.fn(async (_telegramId: string) => null);
+    mockUpdate = mock.fn(async (telegramId: string, data: Record<string, unknown>) => ({
+      id: "test-id",
+      telegramId,
+      dailyRequiredMinutes: 480,
+      timezone: "UTC",
+      workdays: [0, 1, 2, 3, 4],
+      vacationAccrualRate: 1,
+      sickAccrualRate: 1.5,
+      vacationBalance: 0,
+      sickBalance: 0,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      ...data,
+    }));
 
     // Inject repository stub into require cache BEFORE the service is loaded
     const repoKey = require.resolve(
@@ -57,6 +75,7 @@ describe("SettingsService", async () => {
     injectCacheStub(repoKey, {
       findUserSettingsByTelegramId: mockFind,
       upsertUserSettings: mockUpsert,
+      updateUserSettings: mockUpdate,
     });
 
     // Evict any cached version of the service so it re-requires the stub repo
@@ -68,6 +87,7 @@ describe("SettingsService", async () => {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const svc = require(svcKey) as typeof import("./SettingsService");
     setupSettings = svc.setupSettings;
+    updateSettings = svc.updateSettings;
     getSettingsOrThrow = svc.getSettingsOrThrow;
     DEFAULT_TIMEZONE = svc.DEFAULT_TIMEZONE;
     DEFAULT_WORKDAYS = svc.DEFAULT_WORKDAYS;
@@ -78,6 +98,7 @@ describe("SettingsService", async () => {
 
   afterEach(() => {
     mockUpsert?.mock.resetCalls();
+    mockUpdate?.mock.resetCalls();
     mockFind?.mock.resetCalls();
   });
 
@@ -265,6 +286,68 @@ describe("SettingsService", async () => {
 
       const result = await getSettingsOrThrow("real-user");
       assert.deepEqual(result, record);
+    });
+  });
+
+  // ── updateSettings – leave accrual fields ────────────────────────────────────
+
+  describe("updateSettings – leave accrual fields", () => {
+    const EXISTING = {
+      id: "s1",
+      telegramId: "user1",
+      dailyRequiredMinutes: 480,
+      timezone: "UTC",
+      workdays: [0, 1, 2, 3, 4],
+      vacationAccrualRate: 1,
+      sickAccrualRate: 1.5,
+      vacationBalance: 0,
+      sickBalance: 0,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    it("passes vacationAccrualRate/sickAccrualRate through to updateUserSettings", async () => {
+      mockFind.mock.mockImplementationOnce(async () => EXISTING);
+
+      await updateSettings("user1", { vacationAccrualRate: 2, sickAccrualRate: 0.5 });
+
+      assert.equal(mockUpdate.mock.calls[0].arguments[0], "user1");
+      assert.equal(mockUpdate.mock.calls[0].arguments[1].vacationAccrualRate, 2);
+      assert.equal(mockUpdate.mock.calls[0].arguments[1].sickAccrualRate, 0.5);
+    });
+
+    it("passes vacationBalance/sickBalance through, including negative values", async () => {
+      mockFind.mock.mockImplementationOnce(async () => EXISTING);
+
+      await updateSettings("user1", { vacationBalance: -2.5, sickBalance: 4 });
+
+      assert.equal(mockUpdate.mock.calls[0].arguments[1].vacationBalance, -2.5);
+      assert.equal(mockUpdate.mock.calls[0].arguments[1].sickBalance, 4);
+    });
+
+    it("only includes the fields that were actually provided", async () => {
+      mockFind.mock.mockImplementationOnce(async () => EXISTING);
+
+      await updateSettings("user1", { vacationBalance: 3 });
+
+      const data = mockUpdate.mock.calls[0].arguments[1];
+      assert.equal(data.vacationBalance, 3);
+      assert.equal("sickBalance" in data, false);
+      assert.equal("vacationAccrualRate" in data, false);
+    });
+
+    it("throws USER_SETTINGS_NOT_FOUND when the user has no settings", async () => {
+      mockFind.mock.mockImplementationOnce(async () => null);
+
+      await assert.rejects(
+        () => updateSettings("ghost", { vacationBalance: 1 }),
+        (err: unknown) => {
+          assert.equal((err as unknown as { code: string }).code, "USER_SETTINGS_NOT_FOUND");
+          return true;
+        }
+      );
+
+      assert.equal(mockUpdate.mock.calls.length, 0);
     });
   });
 });

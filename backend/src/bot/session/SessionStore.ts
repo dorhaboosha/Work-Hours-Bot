@@ -21,6 +21,10 @@ export type SessionStep =
   | "settings_edit:workdays_custom"
   | "settings_edit:timezone"
   | "settings_edit:timezone_custom"
+  | "settings_edit:vacation_rate"
+  | "settings_edit:sick_rate"
+  | "settings_edit:vacation_balance"
+  | "settings_edit:sick_balance"
   // /edit dd-mm multi-step
   | "edit:choose_action"
   | "edit:set_end_hour"

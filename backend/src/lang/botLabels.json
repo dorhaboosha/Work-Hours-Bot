@@ -34,7 +34,7 @@
     "summary": "🗓 *Monthly summary*\n📆 Month: *{{month}}*\n\n📋 Workdays:  *{{workdaysCount}}*\n⏱ Required:  *{{requiredStr}}*\n✅ Worked:    *{{workedStr}}*\n{{balanceEmoji}} Balance:   *{{balanceStr}}*"
   },
   "settings": {
-    "display": "⚙️ *Your current settings*\n\n📋 Daily hours:  *{{dailyHoursStr}}*\n📅 Workdays:     *{{workdaysStr}}*\n🌍 Timezone:     *{{timezone}}*"
+    "display": "⚙️ *Your current settings*\n\n📋 Daily hours:      *{{dailyHoursStr}}*\n📅 Workdays:         *{{workdaysStr}}*\n🌍 Timezone:         *{{timezone}}*\n🌴 Vacation rate:    *{{vacationRateStr}}/month*\n🤒 Sick rate:        *{{sickRateStr}}/month*"
   },
   "setup": {
     "askHours": "⚙️ *Let's set up your work schedule!*\n\n*Step 1 of 5 — Daily hours*\n\nHow many hours do you work per day?\n\nExample: `8.8` (= 8 hours and 48 minutes)",
@@ -54,18 +54,26 @@
     "complete": "✅ *Setup complete!*\n\n{{settings}}\n\nYou can now use /start to begin tracking your workday."
   },
   "settingsEdit": {
-    "chooseField": "What do you want to edit?\n\n1. Daily required hours\n2. Workdays\n3. Timezone",
+    "chooseField": "What do you want to edit?\n\n1. Daily required hours\n2. Workdays\n3. Timezone\n4. Vacation accrual rate\n5. Sick accrual rate\n6. Vacation balance\n7. Sick balance",
     "askHours": "Enter new daily required hours:\n\nExample: `8.8`",
     "chooseWorkdays": "Choose workdays:\n\n1. Sunday–Thursday\n2. Monday–Friday\n3. Custom",
     "askCustomWorkdays": "Enter workdays as comma-separated numbers:\n\n0=Sunday, 1=Monday, 2=Tuesday, 3=Wednesday, 4=Thursday, 5=Friday, 6=Saturday\n\nExample: `0,1,2,3,4`",
     "chooseTimezone": "Choose timezone:\n\n1. Asia/Jerusalem\n2. Europe/London\n3. Europe/Berlin\n4. America/New_York\n5. Custom (IANA format)",
     "askCustomTimezone": "Enter timezone in IANA format:\n\nExample: `Asia/Jerusalem`",
+    "askVacationRate": "Enter new vacation accrual rate (days per month worked):\n\nExample: `1.5`",
+    "askSickRate": "Enter new sick accrual rate (days per month worked):\n\nExample: `2`",
+    "askVacationBalance": "Enter new vacation balance (must be a multiple of 0.5, may be negative):\n\nExample: `-2.5`",
+    "askSickBalance": "Enter new sick balance (must be a multiple of 0.5, may be negative):\n\nExample: `4`",
     "updated": "✅ *Settings updated.*\n\n{{settings}}",
-    "invalidChooseField": "❌ What do you want to edit?\n\n1. Daily required hours\n2. Workdays\n3. Timezone",
+    "invalidChooseField": "❌ What do you want to edit?\n\n1. Daily required hours\n2. Workdays\n3. Timezone\n4. Vacation accrual rate\n5. Sick accrual rate\n6. Vacation balance\n7. Sick balance",
     "invalidAskHours": "❌ Enter new daily required hours:\n\nExample: `8.8`",
     "invalidChooseWorkdays": "❌ Choose workdays:\n\n1. Sunday–Thursday\n2. Monday–Friday\n3. Custom",
     "invalidAskCustomWorkdays": "❌ Enter workdays as comma-separated numbers:\n\n0=Sunday, 1=Monday, 2=Tuesday, 3=Wednesday, 4=Thursday, 5=Friday, 6=Saturday\n\nExample: `0,1,2,3,4`",
-    "invalidChooseTimezone": "❌ Choose timezone:\n\n1. Asia/Jerusalem\n2. Europe/London\n3. Europe/Berlin\n4. America/New_York\n5. Custom (IANA format)"
+    "invalidChooseTimezone": "❌ Choose timezone:\n\n1. Asia/Jerusalem\n2. Europe/London\n3. Europe/Berlin\n4. America/New_York\n5. Custom (IANA format)",
+    "invalidAskVacationRate": "❌ Please enter a valid non-negative number.\n\nExample: `1.5`",
+    "invalidAskSickRate": "❌ Please enter a valid non-negative number.\n\nExample: `2`",
+    "invalidAskVacationBalance": "❌ Please enter a number that's a multiple of 0.5 (e.g. `-2.5`, `0`, `4`).",
+    "invalidAskSickBalance": "❌ Please enter a number that's a multiple of 0.5 (e.g. `-2.5`, `0`, `4`)."
   },
   "help": "📖 *WorkHours Bot — Available commands*\n\n/start          — Start today's workday\n/status         — Show today's active status\n/end            — End today's active workday\n/record         — View today's record\n/record dd-mm   — View record for a specific date\n/edit dd-mm     — Edit or fix a specific date\n/week           — Show current week summary\n/month          — Show current month summary\n/settings       — Show current settings\n/settings\\_edit — Edit settings\n/help           — Show this message",
   "edit": {
