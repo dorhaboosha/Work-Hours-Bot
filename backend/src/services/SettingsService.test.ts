@@ -2,6 +2,7 @@ import { describe, it, mock, before, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
 import type { Module } from "node:module";
+import { DateTime } from "luxon";
 
 // Helper to inject a stub into the CJS require cache before the module under
 // test is loaded for the first time, then reload the target module cleanly.
@@ -192,7 +193,6 @@ describe("SettingsService", async () => {
     });
 
     it("sets accrualAppliedThrough to the start of the current month in the given timezone", async () => {
-      const { DateTime } = require("luxon") as typeof import("luxon");
       const timezone = "UTC";
       const expectedMonthStart = DateTime.now().setZone(timezone).startOf("month").toUTC().toJSDate();
 
