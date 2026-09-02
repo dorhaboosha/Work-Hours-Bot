@@ -41,7 +41,7 @@ It was built as a backend-focused project with an emphasis on clean architecture
 - **Absence types** — sick, vacation, holiday, holiday eve, unpaid absence, and election (via the edit flow)
 - **Summaries** — weekly and monthly balance views against your configured required hours
 - **Settings** — one-time `/setup`, then `/settings` and `/settings_edit` for daily hours, workdays, and timezone
-- **Data retention** — daily records from past months are purged automatically; only the current month is kept (see [Data Retention](#data-retention))
+- **Data retention** — daily records from past months are purged automatically; the current month plus a short trailing buffer is kept (see [Data Retention](#data-retention))
 
 ## Commands
 
@@ -90,9 +90,10 @@ Both the Telegram bot and the REST API share the same business service layer to 
 
 ## Data Retention
 
-A background job (`backend/src/jobs/RecordRetentionJob.ts`) purges daily work records once they fall outside the current UTC month. It runs once on server startup and then every 24 hours, deleting any `daily_records` row dated before the first day of the current UTC month, for every user.
+A background job (`backend/src/jobs/RecordRetentionJob.ts`) purges daily work records once they fall outside the retention window. It runs once on server startup and then every 24 hours, deleting any `daily_records` row dated before the cutoff, for every user.
 
-- **Only the current month's records are retained** — once a month completes, its daily records are deleted and cannot be recovered.
+- **The retention window is the current UTC month plus a trailing buffer** — the cutoff is the first day of the current UTC month, or 10 days before today when that reaches back into the previous month. The buffer keeps a week that straddles the month boundary intact, so the weekly summary (whose window is the Sun–Sat week containing today) never reads purged days as empty.
+- Records older than the cutoff are deleted and cannot be recovered.
 - The purge is idempotent: re-running it after a successful pass is a no-op.
 - A run failure is logged and swallowed; it does not crash the server, and the next scheduled run retries.
 - Weekly/monthly summaries generated before the purge reflect data that will no longer be queryable afterward.
