@@ -9,7 +9,7 @@ import { decimalHoursToMinutes } from "@shared/utils/timeUtils";
 import { isMultipleOfHalf } from "@shared/utils/numberUtils";
 import type { Weekday } from "@shared/types/CoreTypes";
 import { PREDEFINED_TIMEZONES } from "@/constants/timezones";
-import { parseWorkdayList } from "@/bot/utils/timeInputParser";
+import { parseWorkdayList, parseStrictNumber } from "@/bot/utils/timeInputParser";
 import { isValidTimezone } from "@/utils/DateUtils";
 
 export async function handleSettingsEditStep(
@@ -113,8 +113,8 @@ export async function handleSettingsEditStep(
     }
 
     case "settings_edit:vacation_rate": {
-      const rate = parseFloat(text);
-      if (isNaN(rate) || rate < 0) {
+      const rate = parseStrictNumber(text);
+      if (rate === null || rate < 0) {
         await ctx.reply(t("settingsEdit.invalidAskVacationRate"), { parse_mode: "Markdown" });
         return;
       }
@@ -123,8 +123,8 @@ export async function handleSettingsEditStep(
     }
 
     case "settings_edit:sick_rate": {
-      const rate = parseFloat(text);
-      if (isNaN(rate) || rate < 0) {
+      const rate = parseStrictNumber(text);
+      if (rate === null || rate < 0) {
         await ctx.reply(t("settingsEdit.invalidAskSickRate"), { parse_mode: "Markdown" });
         return;
       }
@@ -133,8 +133,8 @@ export async function handleSettingsEditStep(
     }
 
     case "settings_edit:vacation_balance": {
-      const balance = parseFloat(text);
-      if (isNaN(balance) || !isMultipleOfHalf(balance)) {
+      const balance = parseStrictNumber(text);
+      if (balance === null || !isMultipleOfHalf(balance)) {
         await ctx.reply(t("settingsEdit.invalidAskVacationBalance"), { parse_mode: "Markdown" });
         return;
       }
@@ -143,8 +143,8 @@ export async function handleSettingsEditStep(
     }
 
     case "settings_edit:sick_balance": {
-      const balance = parseFloat(text);
-      if (isNaN(balance) || !isMultipleOfHalf(balance)) {
+      const balance = parseStrictNumber(text);
+      if (balance === null || !isMultipleOfHalf(balance)) {
         await ctx.reply(t("settingsEdit.invalidAskSickBalance"), { parse_mode: "Markdown" });
         return;
       }

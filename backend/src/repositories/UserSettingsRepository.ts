@@ -1,4 +1,5 @@
 import { prisma } from "@/config/PrismaClient";
+import type { PrismaClientOrTx } from "@/config/PrismaClient";
 import type { UserSettings } from "@/generated/prisma/client";
 
 export interface UpsertUserSettingsData {
@@ -77,16 +78,38 @@ export interface LeaveAccrualCatchUpData {
   sickDelta: number;
 }
 
+/** The accrual bookkeeping values as read before computing a catch-up — used as the optimistic-concurrency guard. */
+export interface LeaveAccrualPrevious {
+  accrualAnchorAt: Date | null;
+  accrualAppliedThrough: Date | null;
+}
+
 /**
- * Atomically adds the given deltas to the vacation/sick balances and updates
- * the accrual bookkeeping markers, in a single UPDATE (no read-modify-write race).
+ * Adds the given deltas to the vacation/sick balances and updates the accrual
+ * bookkeeping markers — but ONLY if the row's accrualAnchorAt/accrualAppliedThrough
+ * still match `expectedPrevious` (the values read before computing `catchUp`).
+ *
+ * This is an optimistic-concurrency guard: if two requests read the same
+ * "nothing applied yet" state and both compute the same catch-up, only the
+ * first write's conditional match succeeds — the second matches zero rows
+ * (the row has already moved past `expectedPrevious`) and returns null
+ * instead of double-crediting the same elapsed months.
+ *
+ * Returns the updated settings on success, or null when the conditional
+ * update matched no rows (caller should re-fetch rather than retry/reapply —
+ * see LeaveBalanceService.applyPendingLeaveAccrual).
  */
 export async function applyLeaveAccrual(
   telegramId: string,
-  catchUp: LeaveAccrualCatchUpData
-): Promise<UserSettings> {
-  return prisma.userSettings.update({
-    where: { telegramId },
+  catchUp: LeaveAccrualCatchUpData,
+  expectedPrevious: LeaveAccrualPrevious
+): Promise<UserSettings | null> {
+  const result = await prisma.userSettings.updateMany({
+    where: {
+      telegramId,
+      accrualAnchorAt: expectedPrevious.accrualAnchorAt,
+      accrualAppliedThrough: expectedPrevious.accrualAppliedThrough,
+    },
     data: {
       vacationBalance: { increment: catchUp.vacationDelta },
       sickBalance: { increment: catchUp.sickDelta },
@@ -94,17 +117,31 @@ export async function applyLeaveAccrual(
       accrualAppliedThrough: catchUp.accrualAppliedThrough,
     },
   });
+
+  if (result.count === 0) {
+    return null;
+  }
+
+  // updateMany doesn't return the row itself — re-fetch it. telegramId is
+  // unique, so a count of 1 guarantees the row exists.
+  return prisma.userSettings.findUniqueOrThrow({ where: { telegramId } });
 }
 
 export type LeaveBalanceField = "vacationBalance" | "sickBalance";
 
-/** Atomically decrements a leave balance. No floor/clamp — negative results are allowed. */
+/**
+ * Atomically decrements a leave balance. No floor/clamp — negative results
+ * are allowed. Accepts an optional transaction client so callers that need
+ * this write to be atomic with another write (e.g. the matching DailyRecord
+ * upsert) can pass the `tx` from prisma.$transaction().
+ */
 export async function decrementLeaveBalance(
   telegramId: string,
   field: LeaveBalanceField,
-  amount: number
+  amount: number,
+  client: PrismaClientOrTx = prisma
 ): Promise<UserSettings> {
-  return prisma.userSettings.update({
+  return client.userSettings.update({
     where: { telegramId },
     data: { [field]: { decrement: amount } },
   });

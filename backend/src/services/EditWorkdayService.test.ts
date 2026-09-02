@@ -101,6 +101,12 @@ describe("EditWorkdayService", async () => {
   let mockApplyPendingLeaveAccrual: ReturnType<typeof mock.fn<any>>;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let mockDecrementLeaveBalance: ReturnType<typeof mock.fn<any>>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let mockTransaction: ReturnType<typeof mock.fn<any>>;
+
+  // Distinguishable marker so tests can assert both repo calls inside a
+  // transaction received the same `tx` handle passed to prisma.$transaction().
+  const FAKE_TX = { __fakeTx: true };
 
   before(() => {
     mockFindRecordByDate = mock.fn(async () => null); // default → NO_RECORD state
@@ -132,6 +138,9 @@ describe("EditWorkdayService", async () => {
         ...SETTINGS,
         [field]: (SETTINGS as unknown as Record<string, number>)[field] - amount,
       })
+    );
+    mockTransaction = mock.fn(async (callback: (tx: unknown) => Promise<unknown>) =>
+      callback(FAKE_TX)
     );
 
     // ── Repository stub ───────────────────────────────────────────────────────
@@ -166,6 +175,16 @@ describe("EditWorkdayService", async () => {
     );
     injectCacheStub(leaveBalanceSvcKey, {
       applyPendingLeaveAccrual: mockApplyPendingLeaveAccrual,
+    });
+
+    // ── PrismaClient stub (markAbsence wraps the debitable-type write path
+    //    in prisma.$transaction) — avoids loading the real client, which
+    //    validates env vars and would try to actually connect.
+    const prismaClientKey = require.resolve(
+      path.join(__dirname, "../config/PrismaClient")
+    );
+    injectCacheStub(prismaClientKey, {
+      prisma: { $transaction: mockTransaction },
     });
 
     // ── DateUtils stub — keep all real except resolveDdMmToDate ───────────────
@@ -212,6 +231,7 @@ describe("EditWorkdayService", async () => {
     mockGetSettingsOrThrow?.mock.resetCalls();
     mockApplyPendingLeaveAccrual?.mock.resetCalls();
     mockDecrementLeaveBalance?.mock.resetCalls();
+    mockTransaction?.mock.resetCalls();
   });
 
   // ── assertActionAllowed ───────────────────────────────────────────────────────
@@ -650,6 +670,31 @@ describe("EditWorkdayService", async () => {
       assert.equal(mockApplyPendingLeaveAccrual.mock.calls.length, 1);
       assert.equal(mockApplyPendingLeaveAccrual.mock.calls[0].arguments[0], "user1");
       assert.equal(mockGetSettingsOrThrow.mock.calls.length, 0);
+    });
+
+    describe("transactional write for debitable types", () => {
+      it("wraps the record upsert and balance decrement in a single prisma.$transaction", async () => {
+        await markAbsence("user1", "12-06", "VACATION", 1);
+
+        assert.equal(mockTransaction.mock.calls.length, 1);
+      });
+
+      it("passes the same transaction handle to both the record upsert and the balance decrement", async () => {
+        await markAbsence("user1", "12-06", "SICK", 1);
+
+        // upsertRecordByDate(input, tx) -> tx is the 2nd argument
+        assert.equal(mockUpsertRecordByDate.mock.calls[0].arguments[1], FAKE_TX);
+        // decrementLeaveBalance(telegramId, field, amount, tx) -> tx is the 4th argument
+        assert.equal(mockDecrementLeaveBalance.mock.calls[0].arguments[3], FAKE_TX);
+      });
+
+      it("does not open a transaction for non-debitable types", async () => {
+        await markAbsence("user1", "12-06", "UNPAID_ABSENCE");
+
+        assert.equal(mockTransaction.mock.calls.length, 0);
+        // Falls back to the standalone (non-transactional) upsert call, no tx argument.
+        assert.equal(mockUpsertRecordByDate.mock.calls[0].arguments[1], undefined);
+      });
     });
 
     describe("debitDays validation for debitable types", () => {

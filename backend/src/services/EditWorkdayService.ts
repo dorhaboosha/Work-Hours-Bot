@@ -1,4 +1,5 @@
 import { DateTime } from "luxon";
+import { prisma } from "@/config/PrismaClient";
 import { findRecordByDate, updateDailyRecord, upsertRecordByDate } from "@/repositories/DailyRecordRepository";
 import { decrementLeaveBalance } from "@/repositories/UserSettingsRepository";
 import { getSettingsOrThrow } from "@/services/SettingsService";
@@ -274,7 +275,7 @@ export async function markAbsence(
 
   const workedMinutes = calculateCreditedMinutes(absenceType, settings.dailyRequiredMinutes);
 
-  const saved = await upsertRecordByDate({
+  const upsertInput = {
     telegramId,
     workDate,
     recordType: absenceType,
@@ -282,20 +283,34 @@ export async function markAbsence(
     expectedEndTime: null,
     endTime: null,
     workedMinutes,
-  });
+  };
 
+  let saved: PrismaRecord;
   let leaveDebit: EditWorkdayResult["leaveDebit"] = null;
+
   if (balanceField !== null) {
-    const updatedSettings = await decrementLeaveBalance(
-      telegramId,
-      balanceField,
-      debitDays as number
-    );
+    // The record upsert and the balance debit must succeed or fail together —
+    // otherwise a mid-write failure could leave a saved absence record with
+    // no matching balance change (or vice versa).
+    const result = await prisma.$transaction(async (tx) => {
+      const record = await upsertRecordByDate(upsertInput, tx);
+      const updatedSettings = await decrementLeaveBalance(
+        telegramId,
+        balanceField,
+        debitDays as number,
+        tx
+      );
+      return { record, updatedSettings };
+    });
+
+    saved = result.record;
     leaveDebit = {
       field: balanceField,
       amount: debitDays as number,
-      newBalance: updatedSettings[balanceField],
+      newBalance: result.updatedSettings[balanceField],
     };
+  } else {
+    saved = await upsertRecordByDate(upsertInput);
   }
 
   return {

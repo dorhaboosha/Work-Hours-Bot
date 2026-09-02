@@ -148,6 +148,65 @@ describe("LeaveBalanceService", async () => {
 
       assert.equal(mockApplyLeaveAccrual.mock.calls.length, 1);
     });
+
+    it("passes the just-read accrual bookkeeping as the optimistic-concurrency guard", async () => {
+      mockComputeCatchUp.mock.mockImplementationOnce(() => ({
+        accrualAnchorAt: new Date("2026-01-01T00:00:00.000Z"),
+        accrualAppliedThrough: new Date("2026-07-01T00:00:00.000Z"),
+        vacationDelta: 1,
+        sickDelta: 1.5,
+        changed: true,
+      }));
+
+      await applyPendingLeaveAccrual("user1");
+
+      const expectedPrevious = mockApplyLeaveAccrual.mock.calls[0].arguments[2];
+      assert.deepEqual(expectedPrevious, {
+        accrualAnchorAt: SETTINGS.accrualAnchorAt,
+        accrualAppliedThrough: SETTINGS.accrualAppliedThrough,
+      });
+    });
+  });
+
+  describe("applyPendingLeaveAccrual — concurrent catch-up conflict", () => {
+    it("re-fetches instead of reapplying when the conditional update matches nothing (another request already applied it)", async () => {
+      mockComputeCatchUp.mock.mockImplementationOnce(() => ({
+        accrualAnchorAt: new Date("2026-01-01T00:00:00.000Z"),
+        accrualAppliedThrough: new Date("2026-07-01T00:00:00.000Z"),
+        vacationDelta: 1,
+        sickDelta: 1.5,
+        changed: true,
+      }));
+      // Simulates another request's write already having moved the row past
+      // what we read — our conditional update matches zero rows.
+      mockApplyLeaveAccrual.mock.mockImplementationOnce(async () => null);
+      const winnerSettings = { ...SETTINGS, vacationBalance: 5, sickBalance: 7.5 };
+      // onCall is 0-indexed and must be explicit — without it, a later
+      // mockImplementationOnce registration overwrites an earlier one for the
+      // same "next call" slot rather than queuing FIFO.
+      mockGetSettingsOrThrow.mock.mockImplementationOnce(async () => SETTINGS, 0); // initial read
+      mockGetSettingsOrThrow.mock.mockImplementationOnce(async () => winnerSettings, 1); // re-fetch after conflict
+
+      const result = await applyPendingLeaveAccrual("user1");
+
+      assert.equal(mockGetSettingsOrThrow.mock.calls.length, 2);
+      assert.deepEqual(result, winnerSettings);
+    });
+
+    it("does not call applyLeaveAccrual a second time after a conflict (no retry loop)", async () => {
+      mockComputeCatchUp.mock.mockImplementationOnce(() => ({
+        accrualAnchorAt: new Date("2026-01-01T00:00:00.000Z"),
+        accrualAppliedThrough: new Date("2026-07-01T00:00:00.000Z"),
+        vacationDelta: 1,
+        sickDelta: 1.5,
+        changed: true,
+      }));
+      mockApplyLeaveAccrual.mock.mockImplementationOnce(async () => null);
+
+      await applyPendingLeaveAccrual("user1");
+
+      assert.equal(mockApplyLeaveAccrual.mock.calls.length, 1);
+    });
   });
 
   describe("getLeaveBalance", () => {

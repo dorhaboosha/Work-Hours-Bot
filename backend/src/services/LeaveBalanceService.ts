@@ -9,6 +9,15 @@ import { computeLeaveAccrualCatchUp } from "@/utils/accrualUtils";
  * — currently: /balance (getLeaveBalance) and marking a debitable absence
  * (EditWorkdayService.markAbsence). No-op (no write) when nothing is owed and
  * the accrual anchor is already initialized.
+ *
+ * Guards against two concurrent calls double-crediting the same elapsed
+ * months: the write is conditional on the accrual bookkeeping still matching
+ * what was just read (see UserSettingsRepository.applyLeaveAccrual). If
+ * another request already applied a catch-up in between, the conditional
+ * write matches nothing and this just re-fetches the now-current settings
+ * instead of reapplying — no retry loop needed, since a real race this narrow
+ * (both reads landing before either write) can only happen within the same
+ * instant, so both requests would compute the same catch-up.
  */
 export async function applyPendingLeaveAccrual(
   telegramId: string
@@ -20,7 +29,16 @@ export async function applyPendingLeaveAccrual(
     return settings;
   }
 
-  return applyLeaveAccrual(telegramId, catchUp);
+  const updated = await applyLeaveAccrual(telegramId, catchUp, {
+    accrualAnchorAt: settings.accrualAnchorAt,
+    accrualAppliedThrough: settings.accrualAppliedThrough,
+  });
+
+  if (updated === null) {
+    return getSettingsOrThrow(telegramId);
+  }
+
+  return updated;
 }
 
 export interface LeaveBalance {

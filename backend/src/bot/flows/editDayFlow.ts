@@ -11,6 +11,7 @@ import { ABSENCE_TYPES } from "@/constants/absenceTypes";
 import { EDIT_ACTION_MAP } from "@/constants/editActions";
 import { getLeaveBalanceField } from "@shared/utils/recordTypeUtils";
 import { isMultipleOfHalf } from "@shared/utils/numberUtils";
+import { parseStrictNumber } from "@/bot/utils/timeInputParser";
 import type { AbsenceRecordType } from "@shared/types/CoreTypes";
 
 export async function handleEditStep(
@@ -160,8 +161,8 @@ export async function handleEditStep(
       const { ddMm, absenceType } = session.data;
       if (!ddMm || !absenceType) { SessionStore.clear(userId); return; }
 
-      const debitDays = parseFloat(text);
-      if (isNaN(debitDays) || debitDays <= 0 || !isMultipleOfHalf(debitDays)) {
+      const debitDays = parseStrictNumber(text);
+      if (debitDays === null || debitDays <= 0 || !isMultipleOfHalf(debitDays)) {
         await ctx.reply(t("edit.invalidDebitAmount"), { parse_mode: "Markdown" });
         return;
       }

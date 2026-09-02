@@ -11,7 +11,7 @@ import { t, formatWorkdays } from "@/i18n";
 import { handleBotError } from "@/bot/utils/handleBotError";
 import type { Weekday } from "@shared/types/CoreTypes";
 import { PREDEFINED_TIMEZONES } from "@/constants/timezones";
-import { parseWorkdayList } from "@/bot/utils/timeInputParser";
+import { parseWorkdayList, parseStrictNumber } from "@/bot/utils/timeInputParser";
 import { isValidTimezone } from "@/utils/DateUtils";
 
 /** "skip" (any case) or empty input means "use the default rate". */
@@ -92,8 +92,8 @@ export async function handleSetupStep(
     case "setup:vacation_rate": {
       let vacationAccrualRate = DEFAULT_VACATION_ACCRUAL_RATE;
       if (!isSkip(text)) {
-        const parsed = parseFloat(text);
-        if (isNaN(parsed) || parsed < 0) {
+        const parsed = parseStrictNumber(text);
+        if (parsed === null || parsed < 0) {
           await ctx.reply(t("setup.invalidVacationRate"), { parse_mode: "Markdown" });
           return;
         }
@@ -107,8 +107,8 @@ export async function handleSetupStep(
     case "setup:sick_rate": {
       let sickAccrualRate = DEFAULT_SICK_ACCRUAL_RATE;
       if (!isSkip(text)) {
-        const parsed = parseFloat(text);
-        if (isNaN(parsed) || parsed < 0) {
+        const parsed = parseStrictNumber(text);
+        if (parsed === null || parsed < 0) {
           await ctx.reply(t("setup.invalidSickRate"), { parse_mode: "Markdown" });
           return;
         }
