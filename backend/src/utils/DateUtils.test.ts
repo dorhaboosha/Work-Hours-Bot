@@ -5,6 +5,7 @@ import {
   resolveDdMmToDate,
   localTimeToUtc,
   startOfCurrentUtcMonth,
+  retentionCutoff,
   isValidTimezone,
 } from "./DateUtils";
 
@@ -104,5 +105,38 @@ describe("startOfCurrentUtcMonth", () => {
   it("handles a January input correctly after a December rollover", () => {
     const result = startOfCurrentUtcMonth(new Date("2027-01-15T08:00:00Z"));
     assert.equal(result.toISOString(), "2027-01-01T00:00:00.000Z");
+  });
+});
+
+describe("retentionCutoff", () => {
+  it("uses the month start when the buffer date is inside the current month", () => {
+    // 2026-07-28 − 10d = 2026-07-18, which is after 2026-07-01 → month start wins
+    const result = retentionCutoff(new Date("2026-07-28T10:00:00Z"), 10);
+    assert.equal(result.toISOString(), "2026-07-01T00:00:00.000Z");
+  });
+
+  it("uses the buffer date when it reaches back into the previous month", () => {
+    // 2026-09-02 − 10d = 2026-08-23, which is before 2026-09-01 → buffer wins
+    const result = retentionCutoff(new Date("2026-09-02T10:00:00Z"), 10);
+    assert.equal(result.toISOString(), "2026-08-23T00:00:00.000Z");
+  });
+
+  it("keeps a week that straddles the month boundary on the 1st of the month", () => {
+    // First day of the month: month start is today, so the buffer always wins
+    const result = retentionCutoff(new Date("2026-09-01T06:00:00Z"), 10);
+    assert.equal(result.toISOString(), "2026-08-22T00:00:00.000Z");
+  });
+
+  it("normalizes the buffer date to UTC midnight regardless of the time of day", () => {
+    const early = retentionCutoff(new Date("2026-09-02T00:00:01Z"), 10);
+    const late = retentionCutoff(new Date("2026-09-02T23:59:59Z"), 10);
+    assert.equal(early.toISOString(), "2026-08-23T00:00:00.000Z");
+    assert.equal(late.toISOString(), "2026-08-23T00:00:00.000Z");
+  });
+
+  it("crosses a year boundary correctly", () => {
+    // 2027-01-05 − 10d = 2026-12-26, before 2027-01-01 → buffer wins
+    const result = retentionCutoff(new Date("2027-01-05T12:00:00Z"), 10);
+    assert.equal(result.toISOString(), "2026-12-26T00:00:00.000Z");
   });
 });
