@@ -2,13 +2,14 @@ import type { Context } from "telegraf";
 import { SessionStore } from "@/bot/session/SessionStore";
 import type { Session } from "@/bot/session/SessionStore";
 import { updateSettings, getSettingsOrThrow } from "@/services/SettingsService";
-import { formatMinutesAsDuration } from "@/bot/utils/formatMessage";
+import { formatMinutesAsDuration, formatDecimalDays } from "@/bot/utils/formatMessage";
 import { t, formatWorkdays } from "@/i18n";
 import { handleBotError } from "@/bot/utils/handleBotError";
 import { decimalHoursToMinutes } from "@shared/utils/timeUtils";
+import { isMultipleOfHalf } from "@shared/utils/numberUtils";
 import type { Weekday } from "@shared/types/CoreTypes";
 import { PREDEFINED_TIMEZONES } from "@/constants/timezones";
-import { parseWorkdayList } from "@/bot/utils/timeInputParser";
+import { parseWorkdayList, parseStrictNumber } from "@/bot/utils/timeInputParser";
 import { isValidTimezone } from "@/utils/DateUtils";
 
 export async function handleSettingsEditStep(
@@ -36,6 +37,18 @@ export async function handleSettingsEditStep(
       } else if (text === "3") {
         SessionStore.set(userId, { step: "settings_edit:timezone", data: {} });
         await ctx.reply(t("settingsEdit.chooseTimezone"), { parse_mode: "Markdown" });
+      } else if (text === "4") {
+        SessionStore.set(userId, { step: "settings_edit:vacation_rate", data: {} });
+        await ctx.reply(t("settingsEdit.askVacationRate"), { parse_mode: "Markdown" });
+      } else if (text === "5") {
+        SessionStore.set(userId, { step: "settings_edit:sick_rate", data: {} });
+        await ctx.reply(t("settingsEdit.askSickRate"), { parse_mode: "Markdown" });
+      } else if (text === "6") {
+        SessionStore.set(userId, { step: "settings_edit:vacation_balance", data: {} });
+        await ctx.reply(t("settingsEdit.askVacationBalance"), { parse_mode: "Markdown" });
+      } else if (text === "7") {
+        SessionStore.set(userId, { step: "settings_edit:sick_balance", data: {} });
+        await ctx.reply(t("settingsEdit.askSickBalance"), { parse_mode: "Markdown" });
       } else {
         await ctx.reply(t("settingsEdit.invalidChooseField"), { parse_mode: "Markdown" });
       }
@@ -98,6 +111,46 @@ export async function handleSettingsEditStep(
       await applySettingsUpdate(ctx, userId, { timezone: text });
       break;
     }
+
+    case "settings_edit:vacation_rate": {
+      const rate = parseStrictNumber(text);
+      if (rate === null || rate < 0) {
+        await ctx.reply(t("settingsEdit.invalidAskVacationRate"), { parse_mode: "Markdown" });
+        return;
+      }
+      await applySettingsUpdate(ctx, userId, { vacationAccrualRate: rate });
+      break;
+    }
+
+    case "settings_edit:sick_rate": {
+      const rate = parseStrictNumber(text);
+      if (rate === null || rate < 0) {
+        await ctx.reply(t("settingsEdit.invalidAskSickRate"), { parse_mode: "Markdown" });
+        return;
+      }
+      await applySettingsUpdate(ctx, userId, { sickAccrualRate: rate });
+      break;
+    }
+
+    case "settings_edit:vacation_balance": {
+      const balance = parseStrictNumber(text);
+      if (balance === null || !isMultipleOfHalf(balance)) {
+        await ctx.reply(t("settingsEdit.invalidAskVacationBalance"), { parse_mode: "Markdown" });
+        return;
+      }
+      await applySettingsUpdate(ctx, userId, { vacationBalance: balance });
+      break;
+    }
+
+    case "settings_edit:sick_balance": {
+      const balance = parseStrictNumber(text);
+      if (balance === null || !isMultipleOfHalf(balance)) {
+        await ctx.reply(t("settingsEdit.invalidAskSickBalance"), { parse_mode: "Markdown" });
+        return;
+      }
+      await applySettingsUpdate(ctx, userId, { sickBalance: balance });
+      break;
+    }
   }
 }
 
@@ -105,14 +158,30 @@ export async function handleSettingsEditStep(
 async function applySettingsUpdate(
   ctx: Context,
   userId: string,
-  update: { dailyRequiredMinutes?: number; timezone?: string; workdays?: Weekday[] }
+  update: {
+    dailyRequiredMinutes?: number;
+    timezone?: string;
+    workdays?: Weekday[];
+    vacationAccrualRate?: number;
+    sickAccrualRate?: number;
+    vacationBalance?: number;
+    sickBalance?: number;
+  }
 ): Promise<void> {
   SessionStore.clear(userId);
   try {
     const updated = await updateSettings(userId, update);
     const dailyHoursStr = formatMinutesAsDuration(updated.dailyRequiredMinutes);
     const workdaysStr = formatWorkdays(updated.workdays as Weekday[]);
-    const settingsBlock = t("settings.display", { dailyHoursStr, workdaysStr, timezone: updated.timezone });
+    const vacationRateStr = formatDecimalDays(updated.vacationAccrualRate);
+    const sickRateStr = formatDecimalDays(updated.sickAccrualRate);
+    const settingsBlock = t("settings.display", {
+      dailyHoursStr,
+      workdaysStr,
+      timezone: updated.timezone,
+      vacationRateStr,
+      sickRateStr,
+    });
 
     await ctx.reply(t("settingsEdit.updated", { settings: settingsBlock }), { parse_mode: "Markdown" });
   } catch (err) {

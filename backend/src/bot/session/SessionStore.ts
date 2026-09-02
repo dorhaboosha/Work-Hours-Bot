@@ -14,6 +14,8 @@ export type SessionStep =
   | "setup:workdays_custom"
   | "setup:timezone"
   | "setup:timezone_custom"
+  | "setup:vacation_rate"
+  | "setup:sick_rate"
   // /settings_edit multi-step
   | "settings_edit:choose_field"
   | "settings_edit:hours"
@@ -21,21 +23,30 @@ export type SessionStep =
   | "settings_edit:workdays_custom"
   | "settings_edit:timezone"
   | "settings_edit:timezone_custom"
+  | "settings_edit:vacation_rate"
+  | "settings_edit:sick_rate"
+  | "settings_edit:vacation_balance"
+  | "settings_edit:sick_balance"
   // /edit dd-mm multi-step
   | "edit:choose_action"
   | "edit:set_end_hour"
   | "edit:set_start_end"
-  | "edit:choose_absence";
+  | "edit:choose_absence"
+  | "edit:choose_debit_amount";
 
 export interface SessionData {
   /** Collected during /setup flow */
   hours?: number;
   workdays?: number[];
   timezone?: string;
+  vacationAccrualRate?: number;
+  sickAccrualRate?: number;
   /** Preserved during /edit flow */
   ddMm?: string;
   /** EditRecordState string from the initial getEditDayOptions call */
   editState?: string;
+  /** AbsenceRecordType string, set while awaiting a debit amount for MARK_ABSENCE */
+  absenceType?: string;
 }
 
 export interface Session {

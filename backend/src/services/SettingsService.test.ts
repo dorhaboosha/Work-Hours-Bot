@@ -2,6 +2,7 @@ import { describe, it, mock, before, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
 import type { Module } from "node:module";
+import { DateTime } from "luxon";
 
 // Helper to inject a stub into the CJS require cache before the module under
 // test is loaded for the first time, then reload the target module cleanly.
@@ -25,10 +26,16 @@ describe("SettingsService", async () => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let setupSettings: any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let updateSettings: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let getSettingsOrThrow: any;
   let DEFAULT_TIMEZONE: string;
+  let DEFAULT_VACATION_ACCRUAL_RATE: number;
+  let DEFAULT_SICK_ACCRUAL_RATE: number;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let mockUpsert: ReturnType<typeof mock.fn<any>>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let mockUpdate: ReturnType<typeof mock.fn<any>>;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let mockFind: ReturnType<typeof mock.fn<any>>;
   let baseSetupInput: { timezone: string; workdays: number[] };
@@ -45,6 +52,20 @@ describe("SettingsService", async () => {
     }));
 
     mockFind = mock.fn(async (_telegramId: string) => null);
+    mockUpdate = mock.fn(async (telegramId: string, data: Record<string, unknown>) => ({
+      id: "test-id",
+      telegramId,
+      dailyRequiredMinutes: 480,
+      timezone: "UTC",
+      workdays: [0, 1, 2, 3, 4],
+      vacationAccrualRate: 1,
+      sickAccrualRate: 1.5,
+      vacationBalance: 0,
+      sickBalance: 0,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      ...data,
+    }));
 
     // Inject repository stub into require cache BEFORE the service is loaded
     const repoKey = require.resolve(
@@ -53,6 +74,7 @@ describe("SettingsService", async () => {
     injectCacheStub(repoKey, {
       findUserSettingsByTelegramId: mockFind,
       upsertUserSettings: mockUpsert,
+      updateUserSettings: mockUpdate,
     });
 
     // Evict any cached version of the service so it re-requires the stub repo
@@ -64,13 +86,17 @@ describe("SettingsService", async () => {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const svc = require(svcKey) as typeof import("./SettingsService");
     setupSettings = svc.setupSettings;
+    updateSettings = svc.updateSettings;
     getSettingsOrThrow = svc.getSettingsOrThrow;
     DEFAULT_TIMEZONE = svc.DEFAULT_TIMEZONE;
+    DEFAULT_VACATION_ACCRUAL_RATE = svc.DEFAULT_VACATION_ACCRUAL_RATE;
+    DEFAULT_SICK_ACCRUAL_RATE = svc.DEFAULT_SICK_ACCRUAL_RATE;
     baseSetupInput = { timezone: DEFAULT_TIMEZONE, workdays: [0, 1, 2, 3, 4] };
   });
 
   afterEach(() => {
     mockUpsert?.mock.resetCalls();
+    mockUpdate?.mock.resetCalls();
     mockFind?.mock.resetCalls();
   });
 
@@ -126,6 +152,62 @@ describe("SettingsService", async () => {
       });
 
       assert.deepEqual(mockUpsert.mock.calls[0].arguments[0].workdays, [1, 2, 3, 4, 5]);
+    });
+  });
+
+  // ── setupSettings – leave accrual initialization ─────────────────────────────
+
+  describe("setupSettings – leave accrual initialization", () => {
+    it("defaults vacationAccrualRate/sickAccrualRate when not provided", async () => {
+      await setupSettings({ telegramId: "7", dailyHoursOrMinutes: 480, ...baseSetupInput });
+
+      assert.equal(
+        mockUpsert.mock.calls[0].arguments[0].vacationAccrualRate,
+        DEFAULT_VACATION_ACCRUAL_RATE
+      );
+      assert.equal(
+        mockUpsert.mock.calls[0].arguments[0].sickAccrualRate,
+        DEFAULT_SICK_ACCRUAL_RATE
+      );
+    });
+
+    it("passes through custom vacationAccrualRate/sickAccrualRate when provided", async () => {
+      await setupSettings({
+        telegramId: "8",
+        dailyHoursOrMinutes: 480,
+        ...baseSetupInput,
+        vacationAccrualRate: 2,
+        sickAccrualRate: 0.5,
+      });
+
+      assert.equal(mockUpsert.mock.calls[0].arguments[0].vacationAccrualRate, 2);
+      assert.equal(mockUpsert.mock.calls[0].arguments[0].sickAccrualRate, 0.5);
+    });
+
+    it("initializes accrualAnchorAt and accrualAppliedThrough as Dates", async () => {
+      await setupSettings({ telegramId: "9", dailyHoursOrMinutes: 480, ...baseSetupInput });
+
+      const args = mockUpsert.mock.calls[0].arguments[0];
+      assert.ok(args.accrualAnchorAt instanceof Date);
+      assert.ok(args.accrualAppliedThrough instanceof Date);
+    });
+
+    it("sets accrualAppliedThrough to the start of the current month in the given timezone", async () => {
+      const timezone = "UTC";
+      const expectedMonthStart = DateTime.now().setZone(timezone).startOf("month").toUTC().toJSDate();
+
+      await setupSettings({
+        telegramId: "10",
+        dailyHoursOrMinutes: 480,
+        timezone,
+        workdays: [0, 1, 2, 3, 4],
+      });
+
+      const args = mockUpsert.mock.calls[0].arguments[0];
+      assert.equal(
+        (args.accrualAppliedThrough as Date).toISOString(),
+        expectedMonthStart.toISOString()
+      );
     });
   });
 
@@ -201,6 +283,68 @@ describe("SettingsService", async () => {
 
       const result = await getSettingsOrThrow("real-user");
       assert.deepEqual(result, record);
+    });
+  });
+
+  // ── updateSettings – leave accrual fields ────────────────────────────────────
+
+  describe("updateSettings – leave accrual fields", () => {
+    const EXISTING = {
+      id: "s1",
+      telegramId: "user1",
+      dailyRequiredMinutes: 480,
+      timezone: "UTC",
+      workdays: [0, 1, 2, 3, 4],
+      vacationAccrualRate: 1,
+      sickAccrualRate: 1.5,
+      vacationBalance: 0,
+      sickBalance: 0,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    it("passes vacationAccrualRate/sickAccrualRate through to updateUserSettings", async () => {
+      mockFind.mock.mockImplementationOnce(async () => EXISTING);
+
+      await updateSettings("user1", { vacationAccrualRate: 2, sickAccrualRate: 0.5 });
+
+      assert.equal(mockUpdate.mock.calls[0].arguments[0], "user1");
+      assert.equal(mockUpdate.mock.calls[0].arguments[1].vacationAccrualRate, 2);
+      assert.equal(mockUpdate.mock.calls[0].arguments[1].sickAccrualRate, 0.5);
+    });
+
+    it("passes vacationBalance/sickBalance through, including negative values", async () => {
+      mockFind.mock.mockImplementationOnce(async () => EXISTING);
+
+      await updateSettings("user1", { vacationBalance: -2.5, sickBalance: 4 });
+
+      assert.equal(mockUpdate.mock.calls[0].arguments[1].vacationBalance, -2.5);
+      assert.equal(mockUpdate.mock.calls[0].arguments[1].sickBalance, 4);
+    });
+
+    it("only includes the fields that were actually provided", async () => {
+      mockFind.mock.mockImplementationOnce(async () => EXISTING);
+
+      await updateSettings("user1", { vacationBalance: 3 });
+
+      const data = mockUpdate.mock.calls[0].arguments[1];
+      assert.equal(data.vacationBalance, 3);
+      assert.equal("sickBalance" in data, false);
+      assert.equal("vacationAccrualRate" in data, false);
+    });
+
+    it("throws USER_SETTINGS_NOT_FOUND when the user has no settings", async () => {
+      mockFind.mock.mockImplementationOnce(async () => null);
+
+      await assert.rejects(
+        () => updateSettings("ghost", { vacationBalance: 1 }),
+        (err: unknown) => {
+          assert.equal((err as unknown as { code: string }).code, "USER_SETTINGS_NOT_FOUND");
+          return true;
+        }
+      );
+
+      assert.equal(mockUpdate.mock.calls.length, 0);
     });
   });
 });

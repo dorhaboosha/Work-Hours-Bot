@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { getLeaveBalanceField } from "@shared/utils/recordTypeUtils";
 
 /**
  * Matches dd-mm format with valid day (01–31) and month (01–12) ranges.
@@ -59,15 +60,30 @@ const SetStartAndEndHoursSchema = z
 
 /**
  * MARK_ABSENCE — creates or replaces a record with an absence type.
- * recordType must not be WORK.
+ * recordType must not be WORK. debitDays is required (a positive multiple of
+ * 0.5) when recordType debits a leave balance (VACATION/HOLIDAY/HOLIDAY_EVE/
+ * SICK — see getLeaveBalanceField); omitted/ignored for UNPAID_ABSENCE/ELECTION.
  */
-const MarkAbsenceSchema = z.object({
-  action: z.literal("MARK_ABSENCE"),
-  recordType: z.enum(
-    ["SICK", "VACATION", "HOLIDAY", "HOLIDAY_EVE", "UNPAID_ABSENCE", "ELECTION"],
-    { errorMap: () => ({ message: "recordType must be a supported absence type" }) }
-  ),
-});
+const MarkAbsenceSchema = z
+  .object({
+    action: z.literal("MARK_ABSENCE"),
+    recordType: z.enum(
+      ["SICK", "VACATION", "HOLIDAY", "HOLIDAY_EVE", "UNPAID_ABSENCE", "ELECTION"],
+      { errorMap: () => ({ message: "recordType must be a supported absence type" }) }
+    ),
+    debitDays: z
+      .number()
+      .positive("debitDays must be greater than 0")
+      .multipleOf(0.5, "debitDays must be a multiple of 0.5")
+      .optional(),
+  })
+  .refine(
+    (data) => getLeaveBalanceField(data.recordType) === null || data.debitDays !== undefined,
+    {
+      message: "debitDays is required for SICK, VACATION, HOLIDAY, and HOLIDAY_EVE",
+      path: ["debitDays"],
+    }
+  );
 
 /**
  * Union for PATCH /workdays/edit/:telegramId/:date.

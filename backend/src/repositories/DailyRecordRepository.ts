@@ -1,4 +1,5 @@
 import { prisma } from "@/config/PrismaClient";
+import type { PrismaClientOrTx } from "@/config/PrismaClient";
 import type { DailyRecord, DailyRecordType } from "@/generated/prisma/client";
 
 export interface CreateDailyRecordInput {
@@ -83,9 +84,14 @@ export async function updateDailyRecord(
 /**
  * Creates or replaces the record for a specific (telegramId, workDate).
  * Used by the edit-day flow (SET_START_AND_END_HOURS, MARK_ABSENCE).
+ *
+ * Accepts an optional transaction client so callers that need this write to
+ * be atomic with another write (e.g. a leave-balance debit) can pass the `tx`
+ * from prisma.$transaction() instead of the default standalone client.
  */
 export async function upsertRecordByDate(
-  input: UpsertDailyRecordInput
+  input: UpsertDailyRecordInput,
+  client: PrismaClientOrTx = prisma
 ): Promise<DailyRecord> {
   const { telegramId, workDate, recordType, startTime, expectedEndTime, endTime, workedMinutes } =
     input;
@@ -98,7 +104,7 @@ export async function upsertRecordByDate(
     workedMinutes: workedMinutes ?? null,
   };
 
-  return prisma.dailyRecord.upsert({
+  return client.dailyRecord.upsert({
     where: { telegramId_workDate: { telegramId, workDate } },
     update: payload,
     create: { telegramId, workDate, ...payload },

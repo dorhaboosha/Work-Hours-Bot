@@ -1,6 +1,9 @@
 import { DateTime } from "luxon";
+import { prisma } from "@/config/PrismaClient";
 import { findRecordByDate, updateDailyRecord, upsertRecordByDate } from "@/repositories/DailyRecordRepository";
+import { decrementLeaveBalance } from "@/repositories/UserSettingsRepository";
 import { getSettingsOrThrow } from "@/services/SettingsService";
+import { applyPendingLeaveAccrual } from "@/services/LeaveBalanceService";
 import { resolveDdMmToDate, localTimeToUtc } from "@/utils/DateUtils";
 import { AppError } from "@/utils/AppError";
 import { calcExpectedEndTime, calcWorkedMinutes, calcBalance } from "@/services/TimeCalculationService";
@@ -8,7 +11,7 @@ import type { DailyRecord as PrismaRecord } from "@/generated/prisma/client";
 import type { DailyRecord } from "@shared/types/CoreTypes";
 import type { EditDayOptions, EditWorkdayResult } from "@shared/types/ViewTypes";
 import type { EditRecordState, EditAction, DailyRecordType, AbsenceRecordType } from "@shared/types/CoreTypes";
-import { calculateCreditedMinutes } from "@shared/utils/recordTypeUtils";
+import { calculateCreditedMinutes, getLeaveBalanceField } from "@shared/utils/recordTypeUtils";
 
 /** Converts a YYYY-MM-DD string to a UTC midnight Date for Prisma date column lookups. */
 function localDateToUtcMidnight(dateStr: string): Date {
@@ -235,13 +238,35 @@ export async function setStartAndEndHours(
  *   - UNPAID_ABSENCE                        → 0
  *
  * Allowed in all states (NO_RECORD, OPEN_WORK_RECORD, CLOSED_WORK_RECORD, ABSENCE_RECORD).
+ *
+ * For debitable absence types (VACATION/HOLIDAY/HOLIDAY_EVE → vacationBalance,
+ * SICK → sickBalance — see getLeaveBalanceField), `debitDays` is required and
+ * is subtracted from the corresponding leave balance. This is independent of
+ * the credited work-minutes above: the caller chooses the debit amount (any
+ * multiple of 0.5), it does not have to match the all-or-half credit rule.
+ * Negative balances are always allowed — debiting is never blocked.
+ *
+ * Throws VALIDATION_ERROR if debitDays is missing/non-positive for a
+ * debitable type. Validated before any write, so an invalid debit amount
+ * never leaves a saved record without its matching balance change.
  */
 export async function markAbsence(
   telegramId: string,
   ddMm: string,
-  absenceType: AbsenceRecordType
+  absenceType: AbsenceRecordType,
+  debitDays?: number
 ): Promise<EditWorkdayResult> {
-  const settings = await getSettingsOrThrow(telegramId);
+  const balanceField = getLeaveBalanceField(absenceType);
+  if (balanceField !== null && (debitDays === undefined || debitDays <= 0)) {
+    throw new AppError(
+      "VALIDATION_ERROR",
+      `debitDays is required and must be a positive number of days for ${absenceType}.`
+    );
+  }
+
+  // Catch up any owed leave accrual before debiting, so the balance reflects
+  // accrual through today (this codebase has no scheduler — see accrualUtils).
+  const settings = await applyPendingLeaveAccrual(telegramId);
   const workDateStr = resolveDdMmToDate(ddMm, settings.timezone);
   const workDate = localDateToUtcMidnight(workDateStr);
 
@@ -250,7 +275,7 @@ export async function markAbsence(
 
   const workedMinutes = calculateCreditedMinutes(absenceType, settings.dailyRequiredMinutes);
 
-  const saved = await upsertRecordByDate({
+  const upsertInput = {
     telegramId,
     workDate,
     recordType: absenceType,
@@ -258,7 +283,38 @@ export async function markAbsence(
     expectedEndTime: null,
     endTime: null,
     workedMinutes,
-  });
+  };
 
-  return toEditWorkdayResult(saved, workDateStr, ddMm, settings.dailyRequiredMinutes);
+  let saved: PrismaRecord;
+  let leaveDebit: EditWorkdayResult["leaveDebit"] = null;
+
+  if (balanceField !== null) {
+    // The record upsert and the balance debit must succeed or fail together —
+    // otherwise a mid-write failure could leave a saved absence record with
+    // no matching balance change (or vice versa).
+    const result = await prisma.$transaction(async (tx) => {
+      const record = await upsertRecordByDate(upsertInput, tx);
+      const updatedSettings = await decrementLeaveBalance(
+        telegramId,
+        balanceField,
+        debitDays as number,
+        tx
+      );
+      return { record, updatedSettings };
+    });
+
+    saved = result.record;
+    leaveDebit = {
+      field: balanceField,
+      amount: debitDays as number,
+      newBalance: result.updatedSettings[balanceField],
+    };
+  } else {
+    saved = await upsertRecordByDate(upsertInput);
+  }
+
+  return {
+    ...toEditWorkdayResult(saved, workDateStr, ddMm, settings.dailyRequiredMinutes),
+    leaveDebit,
+  };
 }

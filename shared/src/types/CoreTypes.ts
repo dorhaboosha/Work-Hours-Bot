@@ -34,6 +34,14 @@ export interface UserSettings {
   timezone: string;
   /** Configured workdays. Example: [0, 1, 2, 3, 4] = Sunday–Thursday */
   workdays: Weekday[];
+  /** Vacation days accrued per elapsed calendar month. Default 1. */
+  vacationAccrualRate: number;
+  /** Sick days accrued per elapsed calendar month. Default 1.5. */
+  sickAccrualRate: number;
+  /** Current vacation day balance. May be negative. Multiple of 0.5. */
+  vacationBalance: number;
+  /** Current sick day balance. May be negative. Multiple of 0.5. */
+  sickBalance: number;
   /** ISO datetime */
   createdAt: string;
   /** ISO datetime */

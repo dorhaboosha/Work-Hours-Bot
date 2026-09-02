@@ -10,6 +10,7 @@ import { handleEdit } from "@/bot/handlers/EditCommandHandler";
 import { handleRecord } from "@/bot/handlers/RecordCommandHandler";
 import { handleWeek } from "@/bot/handlers/WeekCommandHandler";
 import { handleMonth } from "@/bot/handlers/MonthCommandHandler";
+import { handleBalance } from "@/bot/handlers/BalanceCommandHandler";
 import { handleHelp } from "@/bot/handlers/HelpCommandHandler";
 import { handleConversation } from "@/bot/handlers/ConversationHandler";
 
@@ -38,6 +39,7 @@ export function registerCommands(): void {
   bot.command("edit", handleEdit);
   bot.command("week", handleWeek);
   bot.command("month", handleMonth);
+  bot.command("balance", handleBalance);
   bot.command("help", handleHelp);
 
   // Plain-text replies continue an active multi-step conversation.

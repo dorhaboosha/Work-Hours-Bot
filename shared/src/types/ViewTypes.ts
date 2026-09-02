@@ -82,6 +82,16 @@ export interface EditWorkdayResult {
   requiredMinutes: number;
   /** workedMinutes - requiredMinutes; positive = overtime, negative = under */
   balanceMinutes: number;
+  /**
+   * Present only when MARK_ABSENCE was applied to a debitable absence type
+   * (VACATION/HOLIDAY/HOLIDAY_EVE/SICK). null for SET_END_HOUR,
+   * SET_START_AND_END_HOURS, and MARK_ABSENCE with UNPAID_ABSENCE/ELECTION.
+   */
+  leaveDebit?: {
+    field: "vacationBalance" | "sickBalance";
+    amount: number;
+    newBalance: number;
+  } | null;
 }
 
 // --- DateRecordLookup ---
