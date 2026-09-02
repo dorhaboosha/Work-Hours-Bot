@@ -51,12 +51,22 @@ describe("RecordRetentionService", async () => {
   });
 
   describe("purgeOldDailyRecords", () => {
-    it("passes the computed start-of-current-UTC-month cutoff to the repository", async () => {
+    it("passes the current-UTC-month start as the cutoff when the trailing buffer stays within the month", async () => {
+      // 2026-07-28 − 10d buffer = 2026-07-18, still inside July → month start wins
       await purgeOldDailyRecords(new Date("2026-07-28T10:00:00Z"));
 
       assert.equal(mockDeleteDailyRecordsBefore.mock.calls.length, 1);
       const cutoffArg = mockDeleteDailyRecordsBefore.mock.calls[0].arguments[0] as Date;
       assert.equal(cutoffArg.toISOString(), "2026-07-01T00:00:00.000Z");
+    });
+
+    it("keeps the previous month's tail when the current week straddles the month boundary", async () => {
+      // 2026-09-03 − 10d buffer = 2026-08-24, before 2026-09-01 → buffer wins,
+      // so records back to Aug 24 (covering this week's Aug 30/31 workdays) survive
+      await purgeOldDailyRecords(new Date("2026-09-03T09:00:00Z"));
+
+      const cutoffArg = mockDeleteDailyRecordsBefore.mock.calls[0].arguments[0] as Date;
+      assert.equal(cutoffArg.toISOString(), "2026-08-24T00:00:00.000Z");
     });
 
     it("returns the cutoff alongside the deleted count", async () => {
