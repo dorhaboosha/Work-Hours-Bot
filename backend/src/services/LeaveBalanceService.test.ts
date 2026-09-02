@@ -193,19 +193,75 @@ describe("LeaveBalanceService", async () => {
       assert.deepEqual(result, winnerSettings);
     });
 
-    it("does not call applyLeaveAccrual a second time after a conflict (no retry loop)", async () => {
+    it("recomputes after a conflict and stops once nothing more is owed", async () => {
       mockComputeCatchUp.mock.mockImplementationOnce(() => ({
         accrualAnchorAt: new Date("2026-01-01T00:00:00.000Z"),
         accrualAppliedThrough: new Date("2026-07-01T00:00:00.000Z"),
         vacationDelta: 1,
         sickDelta: 1.5,
         changed: true,
-      }));
-      mockApplyLeaveAccrual.mock.mockImplementationOnce(async () => null);
+      }), 0);
+      mockApplyLeaveAccrual.mock.mockImplementationOnce(async () => null); // conflict
 
-      await applyPendingLeaveAccrual("user1");
+      const winnerSettings = {
+        ...SETTINGS,
+        accrualAppliedThrough: new Date("2026-07-01T00:00:00.000Z"),
+        vacationBalance: 4,
+        sickBalance: 6,
+      };
+      mockGetSettingsOrThrow.mock.mockImplementationOnce(async () => SETTINGS, 0);
+      mockGetSettingsOrThrow.mock.mockImplementationOnce(async () => winnerSettings, 1);
 
-      assert.equal(mockApplyLeaveAccrual.mock.calls.length, 1);
+      // Recomputing against the winner's fresh state finds nothing left owed.
+      mockComputeCatchUp.mock.mockImplementationOnce(() => ({
+        accrualAnchorAt: winnerSettings.accrualAppliedThrough,
+        accrualAppliedThrough: winnerSettings.accrualAppliedThrough,
+        vacationDelta: 0,
+        sickDelta: 0,
+        changed: false,
+      }), 1);
+
+      const result = await applyPendingLeaveAccrual("user1");
+
+      assert.equal(mockGetSettingsOrThrow.mock.calls.length, 2);
+      assert.equal(mockApplyLeaveAccrual.mock.calls.length, 1); // never retried the write — nothing left to apply
+      assert.deepEqual(result, winnerSettings);
+    });
+
+    it("retries the write if recomputing after a conflict finds more still owed", async () => {
+      mockComputeCatchUp.mock.mockImplementationOnce(() => ({
+        accrualAnchorAt: new Date("2026-01-01T00:00:00.000Z"),
+        accrualAppliedThrough: new Date("2026-06-01T00:00:00.000Z"),
+        vacationDelta: 1,
+        sickDelta: 1.5,
+        changed: true,
+      }), 0);
+      mockApplyLeaveAccrual.mock.mockImplementationOnce(async () => null, 0); // 1st attempt conflicts
+
+      const partialWinner = {
+        ...SETTINGS,
+        accrualAppliedThrough: new Date("2026-07-01T00:00:00.000Z"),
+      };
+      mockGetSettingsOrThrow.mock.mockImplementationOnce(async () => SETTINGS, 0);
+      mockGetSettingsOrThrow.mock.mockImplementationOnce(async () => partialWinner, 1);
+
+      // Still behind "now" -> another month owed -> should try the write again.
+      mockComputeCatchUp.mock.mockImplementationOnce(() => ({
+        accrualAnchorAt: partialWinner.accrualAppliedThrough,
+        accrualAppliedThrough: new Date("2026-08-01T00:00:00.000Z"),
+        vacationDelta: 1,
+        sickDelta: 1.5,
+        changed: true,
+      }), 1);
+      mockApplyLeaveAccrual.mock.mockImplementationOnce(
+        async () => ({ ...SETTINGS, vacationBalance: 6, sickBalance: 9 }),
+        1
+      ); // 2nd attempt succeeds
+
+      const result = await applyPendingLeaveAccrual("user1");
+
+      assert.equal(mockApplyLeaveAccrual.mock.calls.length, 2);
+      assert.equal(result.vacationBalance, 6);
     });
   });
 
