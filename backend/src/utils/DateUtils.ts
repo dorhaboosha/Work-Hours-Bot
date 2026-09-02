@@ -127,6 +127,28 @@ export function startOfCurrentUtcMonth(now: Date = new Date()): Date {
 }
 
 /**
+ * Returns the retention-purge cutoff: the earlier of the start of the current
+ * UTC month and UTC midnight `bufferDays` before `now`. Any daily_records row
+ * with workDate strictly before this Date is safe to delete.
+ *
+ * The buffer exists so a week that straddles a month boundary keeps its
+ * previous-month days until that week is fully over — otherwise the weekly
+ * summary, whose window is the Sun–Sat week containing today, would read
+ * already-purged days and show them as empty.
+ *
+ * `now` minus `bufferDays` is normalized to UTC midnight so the cutoff is
+ * date-aligned and independent of the time of day the purge happens to run.
+ */
+export function retentionCutoff(now: Date, bufferDays: number): Date {
+  const monthStart = startOfCurrentUtcMonth(now);
+  const bufferStart = DateTime.fromJSDate(now, { zone: "utc" })
+    .minus({ days: bufferDays })
+    .startOf("day")
+    .toJSDate();
+  return bufferStart < monthStart ? bufferStart : monthStart;
+}
+
+/**
  * Returns a new UTC Date that is `minutes` after the given UTC base date.
  * Used to calculate expectedEndTime from startTime + dailyRequiredMinutes.
  */
