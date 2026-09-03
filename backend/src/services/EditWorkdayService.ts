@@ -45,6 +45,8 @@ function toSharedRecord(prisma: PrismaRecord, workDateStr: string): DailyRecord 
     expectedEndTime: prisma.expectedEndTime?.toISOString() ?? null,
     endTime: prisma.endTime?.toISOString() ?? null,
     workedMinutes: prisma.workedMinutes ?? null,
+    debitedLeaveField: prisma.debitedLeaveField as "vacationBalance" | "sickBalance" | null,
+    debitedLeaveDays: prisma.debitedLeaveDays ?? null,
     createdAt: prisma.createdAt.toISOString(),
     updatedAt: prisma.updatedAt.toISOString(),
   };

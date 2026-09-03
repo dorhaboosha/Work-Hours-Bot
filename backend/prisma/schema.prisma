@@ -48,6 +48,13 @@ model DailyRecord {
   expectedEndTime DateTime?       @map("expected_end_time")
   endTime         DateTime?       @map("end_time")
   workedMinutes   Int?            @map("worked_minutes")
+
+  // Leave balance debited for this record, if any ("vacationBalance" |
+  // "sickBalance" | null). Lets a later edit that changes/removes the
+  // absence type refund exactly what this record previously debited.
+  debitedLeaveField String? @map("debited_leave_field")
+  debitedLeaveDays  Float?  @map("debited_leave_days")
+
   createdAt       DateTime        @default(now()) @map("created_at")
   updatedAt       DateTime        @updatedAt @map("updated_at")
 

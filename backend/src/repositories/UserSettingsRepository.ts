@@ -146,3 +146,21 @@ export async function decrementLeaveBalance(
     data: { [field]: { decrement: amount } },
   });
 }
+
+/**
+ * Atomically credits (refunds) a leave balance. Mirrors decrementLeaveBalance
+ * — used when an edit changes/removes a date's previous absence type and the
+ * amount it originally debited needs to be given back before any new debit
+ * is applied. Accepts the same optional transaction client.
+ */
+export async function creditLeaveBalance(
+  telegramId: string,
+  field: LeaveBalanceField,
+  amount: number,
+  client: PrismaClientOrTx = prisma
+): Promise<UserSettings> {
+  return client.userSettings.update({
+    where: { telegramId },
+    data: { [field]: { increment: amount } },
+  });
+}

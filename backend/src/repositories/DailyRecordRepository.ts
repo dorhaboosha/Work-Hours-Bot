@@ -1,6 +1,7 @@
 import { prisma } from "@/config/PrismaClient";
 import type { PrismaClientOrTx } from "@/config/PrismaClient";
 import type { DailyRecord, DailyRecordType } from "@/generated/prisma/client";
+import type { LeaveBalanceField } from "@/repositories/UserSettingsRepository";
 
 export interface CreateDailyRecordInput {
   telegramId: string;
@@ -29,6 +30,9 @@ export interface UpsertDailyRecordInput {
   expectedEndTime?: Date | null;
   endTime?: Date | null;
   workedMinutes?: number | null;
+  /** Which leave balance (if any) this record currently debits — used to refund it correctly on a later edit. */
+  debitedLeaveField?: LeaveBalanceField | null;
+  debitedLeaveDays?: number | null;
 }
 
 /**
@@ -93,8 +97,17 @@ export async function upsertRecordByDate(
   input: UpsertDailyRecordInput,
   client: PrismaClientOrTx = prisma
 ): Promise<DailyRecord> {
-  const { telegramId, workDate, recordType, startTime, expectedEndTime, endTime, workedMinutes } =
-    input;
+  const {
+    telegramId,
+    workDate,
+    recordType,
+    startTime,
+    expectedEndTime,
+    endTime,
+    workedMinutes,
+    debitedLeaveField,
+    debitedLeaveDays,
+  } = input;
 
   const payload = {
     recordType,
@@ -102,6 +115,8 @@ export async function upsertRecordByDate(
     expectedEndTime: expectedEndTime ?? null,
     endTime: endTime ?? null,
     workedMinutes: workedMinutes ?? null,
+    debitedLeaveField: debitedLeaveField ?? null,
+    debitedLeaveDays: debitedLeaveDays ?? null,
   };
 
   return client.dailyRecord.upsert({
