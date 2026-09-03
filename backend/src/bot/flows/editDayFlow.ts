@@ -3,7 +3,13 @@ import { SessionStore } from "@/bot/session/SessionStore";
 import type { Session } from "@/bot/session/SessionStore";
 import { getSettingsOrThrow } from "@/services/SettingsService";
 import { setEndHour, setStartAndEndHours, markAbsence } from "@/services/EditWorkdayService";
-import { formatTime, formatMinutesAsDuration, formatBalance, formatDecimalDays } from "@/bot/utils/formatMessage";
+import {
+  formatTime,
+  formatMinutesAsDuration,
+  formatBalance,
+  formatDecimalDays,
+  formatLeaveFieldLabel,
+} from "@/bot/utils/formatMessage";
 import { t } from "@/i18n";
 import { handleBotError } from "@/bot/utils/handleBotError";
 import { HH_MM_RE, HH_MM_RANGE_RE } from "@/constants/timeFormats";
@@ -13,6 +19,35 @@ import { getLeaveBalanceField } from "@shared/utils/recordTypeUtils";
 import { isMultipleOfHalf } from "@shared/utils/numberUtils";
 import { parseStrictNumber } from "@/bot/utils/timeInputParser";
 import type { AbsenceRecordType } from "@shared/types/CoreTypes";
+import type { EditWorkdayResult } from "@shared/types/ViewTypes";
+
+/**
+ * Appends an optional refund line and/or an optional debit line to a base
+ * message, when the result carries them. A single edit can produce a
+ * refund, a new debit, both (e.g. re-marking a date from one debitable type
+ * to another), or neither.
+ */
+function appendLeaveAdjustmentLines(
+  base: string,
+  result: Pick<EditWorkdayResult, "leaveRefund" | "leaveDebit">
+): string {
+  let message = base;
+  if (result.leaveRefund) {
+    message += t("edit.leaveRefundLine", {
+      amount: formatDecimalDays(result.leaveRefund.amount),
+      fieldLabel: formatLeaveFieldLabel(result.leaveRefund.field),
+      newBalance: formatDecimalDays(result.leaveRefund.newBalance),
+    });
+  }
+  if (result.leaveDebit) {
+    message += t("edit.leaveDebitLine", {
+      amount: formatDecimalDays(result.leaveDebit.amount),
+      fieldLabel: formatLeaveFieldLabel(result.leaveDebit.field),
+      newBalance: formatDecimalDays(result.leaveDebit.newBalance),
+    });
+  }
+  return message;
+}
 
 export async function handleEditStep(
   ctx: Context,
@@ -109,10 +144,11 @@ export async function handleEditStep(
         const workedStr = formatMinutesAsDuration(result.workedMinutes);
         const balanceStr = formatBalance(result.balanceMinutes);
 
-        await ctx.reply(
+        const message = appendLeaveAdjustmentLines(
           t("edit.startEndSaved", { date: ddMm, startStr, endStr, workedStr, balanceStr }),
-          { parse_mode: "Markdown" }
+          result
         );
+        await ctx.reply(message, { parse_mode: "Markdown" });
       } catch (err) {
         await handleBotError(ctx, err);
       }
@@ -147,10 +183,11 @@ export async function handleEditStep(
         const creditedStr = formatMinutesAsDuration(result.workedMinutes);
         const balanceStr = formatBalance(result.balanceMinutes);
 
-        await ctx.reply(
+        const message = appendLeaveAdjustmentLines(
           t("edit.absenceSaved", { date: ddMm, absenceLabel, creditedStr, balanceStr }),
-          { parse_mode: "Markdown" }
+          result
         );
+        await ctx.reply(message, { parse_mode: "Markdown" });
       } catch (err) {
         await handleBotError(ctx, err);
       }
@@ -179,26 +216,11 @@ export async function handleEditStep(
         const creditedStr = formatMinutesAsDuration(result.workedMinutes);
         const balanceStr = formatBalance(result.balanceMinutes);
 
-        if (result.leaveDebit) {
-          const debitAmountStr = formatDecimalDays(result.leaveDebit.amount);
-          const newBalanceStr = formatDecimalDays(result.leaveDebit.newBalance);
-          await ctx.reply(
-            t("edit.absenceSavedWithDebit", {
-              date: ddMm,
-              absenceLabel,
-              creditedStr,
-              balanceStr,
-              debitAmountStr,
-              newBalanceStr,
-            }),
-            { parse_mode: "Markdown" }
-          );
-        } else {
-          await ctx.reply(
-            t("edit.absenceSaved", { date: ddMm, absenceLabel, creditedStr, balanceStr }),
-            { parse_mode: "Markdown" }
-          );
-        }
+        const message = appendLeaveAdjustmentLines(
+          t("edit.absenceSaved", { date: ddMm, absenceLabel, creditedStr, balanceStr }),
+          result
+        );
+        await ctx.reply(message, { parse_mode: "Markdown" });
       } catch (err) {
         await handleBotError(ctx, err);
       }

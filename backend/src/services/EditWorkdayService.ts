@@ -1,13 +1,14 @@
 import { DateTime } from "luxon";
 import { prisma } from "@/config/PrismaClient";
 import { findRecordByDate, updateDailyRecord, upsertRecordByDate } from "@/repositories/DailyRecordRepository";
-import { decrementLeaveBalance } from "@/repositories/UserSettingsRepository";
+import { decrementLeaveBalance, creditLeaveBalance } from "@/repositories/UserSettingsRepository";
+import type { LeaveBalanceField } from "@/repositories/UserSettingsRepository";
 import { getSettingsOrThrow } from "@/services/SettingsService";
 import { applyPendingLeaveAccrual } from "@/services/LeaveBalanceService";
 import { resolveDdMmToDate, localTimeToUtc } from "@/utils/DateUtils";
 import { AppError } from "@/utils/AppError";
 import { calcExpectedEndTime, calcWorkedMinutes, calcBalance } from "@/services/TimeCalculationService";
-import type { DailyRecord as PrismaRecord } from "@/generated/prisma/client";
+import type { DailyRecord as PrismaRecord, UserSettings } from "@/generated/prisma/client";
 import type { DailyRecord } from "@shared/types/CoreTypes";
 import type { EditDayOptions, EditWorkdayResult } from "@shared/types/ViewTypes";
 import type { EditRecordState, EditAction, DailyRecordType, AbsenceRecordType } from "@shared/types/CoreTypes";
@@ -45,6 +46,8 @@ function toSharedRecord(prisma: PrismaRecord, workDateStr: string): DailyRecord 
     expectedEndTime: prisma.expectedEndTime?.toISOString() ?? null,
     endTime: prisma.endTime?.toISOString() ?? null,
     workedMinutes: prisma.workedMinutes ?? null,
+    debitedLeaveField: prisma.debitedLeaveField as "vacationBalance" | "sickBalance" | null,
+    debitedLeaveDays: prisma.debitedLeaveDays ?? null,
     createdAt: prisma.createdAt.toISOString(),
     updatedAt: prisma.updatedAt.toISOString(),
   };
@@ -175,6 +178,11 @@ export async function setEndHour(
  * `expectedEndTime` is calculated as startTime + dailyRequiredMinutes.
  *
  * Allowed in all states (NO_RECORD, OPEN_WORK_RECORD, CLOSED_WORK_RECORD, ABSENCE_RECORD).
+ *
+ * If the date being overwritten previously debited a leave balance (e.g. it
+ * was VACATION and is now being converted to worked hours), that amount is
+ * refunded atomically with the upsert — see markAbsence() for the same
+ * refund-then-(re)debit pattern applied to absence-to-absence changes.
  */
 export async function setStartAndEndHours(
   telegramId: string,
@@ -195,12 +203,13 @@ export async function setStartAndEndHours(
     );
   }
 
-  const settings = await getSettingsOrThrow(telegramId);
+  // Catch up any owed leave accrual first — this may now refund a balance.
+  const settings = await applyPendingLeaveAccrual(telegramId);
   const workDateStr = resolveDdMmToDate(ddMm, settings.timezone);
   const workDate = localDateToUtcMidnight(workDateStr);
 
-  const record = await findRecordByDate(telegramId, workDate);
-  assertActionAllowed(resolveState(record), "SET_START_AND_END_HOURS");
+  const existingRecord = await findRecordByDate(telegramId, workDate);
+  assertActionAllowed(resolveState(existingRecord), "SET_START_AND_END_HOURS");
 
   const startTimeUtc = localTimeToUtc(workDateStr, startTimeHhMm, settings.timezone);
   const endTimeUtc   = localTimeToUtc(workDateStr, endTimeHhMm,   settings.timezone);
@@ -214,17 +223,52 @@ export async function setStartAndEndHours(
   const expectedEndTimeUtc = calcExpectedEndTime(startTimeUtc, settings.dailyRequiredMinutes);
   const workedMinutes = calcWorkedMinutes(startTimeUtc, endTimeUtc);
 
-  const saved = await upsertRecordByDate({
+  const previousField = (existingRecord?.debitedLeaveField ?? null) as LeaveBalanceField | null;
+  const previousDays = existingRecord?.debitedLeaveDays ?? null;
+  const hasPreviousDebit = previousField !== null && previousDays !== null && previousDays > 0;
+
+  const upsertInput = {
     telegramId,
     workDate,
-    recordType: "WORK",
+    recordType: "WORK" as const,
     startTime: startTimeUtc,
     expectedEndTime: expectedEndTimeUtc,
     endTime: endTimeUtc,
     workedMinutes,
-  });
+    // A WORK record never carries a debit — clears whatever the overwritten record had.
+    debitedLeaveField: null,
+    debitedLeaveDays: null,
+  };
 
-  return toEditWorkdayResult(saved, workDateStr, ddMm, settings.dailyRequiredMinutes);
+  let saved: PrismaRecord;
+  let leaveRefund: EditWorkdayResult["leaveRefund"] = null;
+
+  if (hasPreviousDebit) {
+    const result = await prisma.$transaction(async (tx) => {
+      const record = await upsertRecordByDate(upsertInput, tx);
+      const refundedSettings = await creditLeaveBalance(
+        telegramId,
+        previousField as LeaveBalanceField,
+        previousDays as number,
+        tx
+      );
+      return { record, refundedSettings };
+    });
+
+    saved = result.record;
+    leaveRefund = {
+      field: previousField as LeaveBalanceField,
+      amount: previousDays as number,
+      newBalance: result.refundedSettings[previousField as LeaveBalanceField],
+    };
+  } else {
+    saved = await upsertRecordByDate(upsertInput);
+  }
+
+  return {
+    ...toEditWorkdayResult(saved, workDateStr, ddMm, settings.dailyRequiredMinutes),
+    leaveRefund,
+  };
 }
 
 // ── Action: MARK_ABSENCE ──────────────────────────────────────────────────────
@@ -249,6 +293,12 @@ export async function setStartAndEndHours(
  * Throws VALIDATION_ERROR if debitDays is missing/non-positive for a
  * debitable type. Validated before any write, so an invalid debit amount
  * never leaves a saved record without its matching balance change.
+ *
+ * If the date being overwritten already had a debit recorded (from a
+ * previous MARK_ABSENCE — different type, different amount, or the same
+ * type marked again), that amount is refunded first, atomically with the
+ * new debit (if any) and the record upsert — so re-marking a date never
+ * stacks debits across multiple balances or amounts for a single day.
  */
 export async function markAbsence(
   telegramId: string,
@@ -270,10 +320,14 @@ export async function markAbsence(
   const workDateStr = resolveDdMmToDate(ddMm, settings.timezone);
   const workDate = localDateToUtcMidnight(workDateStr);
 
-  const record = await findRecordByDate(telegramId, workDate);
-  assertActionAllowed(resolveState(record), "MARK_ABSENCE");
+  const existingRecord = await findRecordByDate(telegramId, workDate);
+  assertActionAllowed(resolveState(existingRecord), "MARK_ABSENCE");
 
   const workedMinutes = calculateCreditedMinutes(absenceType, settings.dailyRequiredMinutes);
+
+  const previousField = (existingRecord?.debitedLeaveField ?? null) as LeaveBalanceField | null;
+  const previousDays = existingRecord?.debitedLeaveDays ?? null;
+  const hasPreviousDebit = previousField !== null && previousDays !== null && previousDays > 0;
 
   const upsertInput = {
     telegramId,
@@ -283,32 +337,63 @@ export async function markAbsence(
     expectedEndTime: null,
     endTime: null,
     workedMinutes,
+    debitedLeaveField: balanceField,
+    debitedLeaveDays: balanceField !== null ? (debitDays as number) : null,
   };
 
   let saved: PrismaRecord;
   let leaveDebit: EditWorkdayResult["leaveDebit"] = null;
+  let leaveRefund: EditWorkdayResult["leaveRefund"] = null;
 
-  if (balanceField !== null) {
-    // The record upsert and the balance debit must succeed or fail together —
-    // otherwise a mid-write failure could leave a saved absence record with
-    // no matching balance change (or vice versa).
+  if (balanceField !== null || hasPreviousDebit) {
+    // The record upsert and any refund/debit must succeed or fail together —
+    // otherwise a mid-write failure could leave a saved record with no
+    // matching balance change (or an incorrect one).
     const result = await prisma.$transaction(async (tx) => {
       const record = await upsertRecordByDate(upsertInput, tx);
-      const updatedSettings = await decrementLeaveBalance(
-        telegramId,
-        balanceField,
-        debitDays as number,
-        tx
-      );
-      return { record, updatedSettings };
+
+      let refundedSettings: UserSettings | null = null;
+      if (hasPreviousDebit) {
+        refundedSettings = await creditLeaveBalance(
+          telegramId,
+          previousField as LeaveBalanceField,
+          previousDays as number,
+          tx
+        );
+      }
+
+      let debitedSettings: UserSettings | null = null;
+      if (balanceField !== null) {
+        debitedSettings = await decrementLeaveBalance(
+          telegramId,
+          balanceField,
+          debitDays as number,
+          tx
+        );
+      }
+
+      return { record, refundedSettings, debitedSettings };
     });
 
     saved = result.record;
-    leaveDebit = {
-      field: balanceField,
-      amount: debitDays as number,
-      newBalance: result.updatedSettings[balanceField],
-    };
+    // Whichever ran last reflects both operations (each update returns the
+    // full row), so it's the authoritative final balance for both fields.
+    const finalSettings = result.debitedSettings ?? result.refundedSettings;
+
+    if (result.refundedSettings) {
+      leaveRefund = {
+        field: previousField as LeaveBalanceField,
+        amount: previousDays as number,
+        newBalance: finalSettings![previousField as LeaveBalanceField],
+      };
+    }
+    if (result.debitedSettings) {
+      leaveDebit = {
+        field: balanceField as LeaveBalanceField,
+        amount: debitDays as number,
+        newBalance: finalSettings![balanceField as LeaveBalanceField],
+      };
+    }
   } else {
     saved = await upsertRecordByDate(upsertInput);
   }
@@ -316,5 +401,6 @@ export async function markAbsence(
   return {
     ...toEditWorkdayResult(saved, workDateStr, ddMm, settings.dailyRequiredMinutes),
     leaveDebit,
+    leaveRefund,
   };
 }

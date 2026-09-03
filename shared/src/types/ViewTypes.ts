@@ -92,6 +92,19 @@ export interface EditWorkdayResult {
     amount: number;
     newBalance: number;
   } | null;
+  /**
+   * Present when this edit changed or removed a date's previous debitable
+   * absence type (MARK_ABSENCE to a different type/amount, or
+   * SET_START_AND_END_HOURS overwriting a previously-debited absence day) —
+   * the amount the date previously debited, given back before any new debit
+   * was applied. Independent of leaveDebit: both, either, or neither may be
+   * present depending on what the previous and new state were.
+   */
+  leaveRefund?: {
+    field: "vacationBalance" | "sickBalance";
+    amount: number;
+    newBalance: number;
+  } | null;
 }
 
 // --- DateRecordLookup ---

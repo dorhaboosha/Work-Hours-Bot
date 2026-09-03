@@ -1,6 +1,7 @@
 import { prisma } from "@/config/PrismaClient";
 import type { PrismaClientOrTx } from "@/config/PrismaClient";
 import type { DailyRecord, DailyRecordType } from "@/generated/prisma/client";
+import type { LeaveBalanceField } from "@/repositories/UserSettingsRepository";
 
 export interface CreateDailyRecordInput {
   telegramId: string;
@@ -29,6 +30,9 @@ export interface UpsertDailyRecordInput {
   expectedEndTime?: Date | null;
   endTime?: Date | null;
   workedMinutes?: number | null;
+  /** Which leave balance (if any) this record currently debits — used to refund it correctly on a later edit. */
+  debitedLeaveField?: LeaveBalanceField | null;
+  debitedLeaveDays?: number | null;
 }
 
 /**
@@ -88,13 +92,36 @@ export async function updateDailyRecord(
  * Accepts an optional transaction client so callers that need this write to
  * be atomic with another write (e.g. a leave-balance debit) can pass the `tx`
  * from prisma.$transaction() instead of the default standalone client.
+ *
+ * Every current caller always sets debitedLeaveField/debitedLeaveDays as a
+ * matched pair (both null, or both set) — enforced here so a future caller
+ * can't silently write a mismatched pair, which would break the refund logic
+ * in EditWorkdayService (it reads this pair to decide whether/how much to
+ * refund on a later edit).
  */
 export async function upsertRecordByDate(
   input: UpsertDailyRecordInput,
   client: PrismaClientOrTx = prisma
 ): Promise<DailyRecord> {
-  const { telegramId, workDate, recordType, startTime, expectedEndTime, endTime, workedMinutes } =
-    input;
+  const {
+    telegramId,
+    workDate,
+    recordType,
+    startTime,
+    expectedEndTime,
+    endTime,
+    workedMinutes,
+    debitedLeaveField,
+    debitedLeaveDays,
+  } = input;
+
+  const hasField = debitedLeaveField !== undefined && debitedLeaveField !== null;
+  const hasDays = debitedLeaveDays !== undefined && debitedLeaveDays !== null;
+  if (hasField !== hasDays) {
+    throw new Error(
+      "upsertRecordByDate: debitedLeaveField and debitedLeaveDays must be provided together (both set or both null/omitted)."
+    );
+  }
 
   const payload = {
     recordType,
@@ -102,6 +129,8 @@ export async function upsertRecordByDate(
     expectedEndTime: expectedEndTime ?? null,
     endTime: endTime ?? null,
     workedMinutes: workedMinutes ?? null,
+    debitedLeaveField: debitedLeaveField ?? null,
+    debitedLeaveDays: debitedLeaveDays ?? null,
   };
 
   return client.dailyRecord.upsert({

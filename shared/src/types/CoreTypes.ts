@@ -117,6 +117,10 @@ export interface DailyRecord {
   endTime?: string | null;
   /** Integer >= 0. null only while a WORK record is active */
   workedMinutes?: number | null;
+  /** Which leave balance this record currently debits, if any. null for WORK and non-debitable absence types. */
+  debitedLeaveField?: "vacationBalance" | "sickBalance" | null;
+  /** The amount debited for this record, if any. null when debitedLeaveField is null. */
+  debitedLeaveDays?: number | null;
   /** ISO datetime */
   createdAt: string;
   /** ISO datetime */
