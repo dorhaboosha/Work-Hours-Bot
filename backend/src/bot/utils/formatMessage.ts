@@ -16,6 +16,11 @@ export function formatTime(utc: Date | string, timezone: string): string {
   return utcToLocalTime(utc, timezone);
 }
 
+/** Maps a leave balance field to its short display label for bot messages. */
+export function formatLeaveFieldLabel(field: "vacationBalance" | "sickBalance"): string {
+  return field === "vacationBalance" ? "vacation" : "sick";
+}
+
 /**
  * Builds a one-line summary line used in several bot replies.
  * Example: "🕐 09:00 → 17:48  |  ✅ 08:48 / 08:48  |  Balance: +00:00"
