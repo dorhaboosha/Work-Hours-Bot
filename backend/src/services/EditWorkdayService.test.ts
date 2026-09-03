@@ -60,7 +60,12 @@ function makeWorkRecord(closed = false) {
   };
 }
 
-function makeAbsenceRecord(recordType: string, workedMinutes: number) {
+function makeAbsenceRecord(
+  recordType: string,
+  workedMinutes: number,
+  debitedLeaveField: "vacationBalance" | "sickBalance" | null = null,
+  debitedLeaveDays: number | null = null
+) {
   return {
     id: "r2",
     telegramId: "user1",
@@ -70,6 +75,8 @@ function makeAbsenceRecord(recordType: string, workedMinutes: number) {
     expectedEndTime: null,
     endTime: null,
     workedMinutes,
+    debitedLeaveField,
+    debitedLeaveDays,
     createdAt: new Date(),
     updatedAt: new Date(),
   };
@@ -102,11 +109,26 @@ describe("EditWorkdayService", async () => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let mockDecrementLeaveBalance: ReturnType<typeof mock.fn<any>>;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let mockCreditLeaveBalance: ReturnType<typeof mock.fn<any>>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let mockTransaction: ReturnType<typeof mock.fn<any>>;
 
   // Distinguishable marker so tests can assert both repo calls inside a
   // transaction received the same `tx` handle passed to prisma.$transaction().
   const FAKE_TX = { __fakeTx: true };
+
+  // Stateful, compounding balances so a refund followed by a same-field debit
+  // (or vice versa) within one test correctly reflects both operations, the
+  // way sequential real DB updates would — not each independently computed
+  // from the static SETTINGS fixture. Reset between tests in afterEach.
+  let currentBalances: { vacationBalance: number; sickBalance: number };
+  function resetCurrentBalances(): void {
+    currentBalances = {
+      vacationBalance: SETTINGS.vacationBalance,
+      sickBalance: SETTINGS.sickBalance,
+    };
+  }
+  resetCurrentBalances();
 
   before(() => {
     mockFindRecordByDate = mock.fn(async () => null); // default → NO_RECORD state
@@ -134,10 +156,16 @@ describe("EditWorkdayService", async () => {
     mockGetSettingsOrThrow = mock.fn(async () => SETTINGS);
     mockApplyPendingLeaveAccrual = mock.fn(async () => SETTINGS);
     mockDecrementLeaveBalance = mock.fn(
-      async (_telegramId: string, field: "vacationBalance" | "sickBalance", amount: number) => ({
-        ...SETTINGS,
-        [field]: (SETTINGS as unknown as Record<string, number>)[field] - amount,
-      })
+      async (_telegramId: string, field: "vacationBalance" | "sickBalance", amount: number) => {
+        currentBalances[field] -= amount;
+        return { ...SETTINGS, ...currentBalances };
+      }
+    );
+    mockCreditLeaveBalance = mock.fn(
+      async (_telegramId: string, field: "vacationBalance" | "sickBalance", amount: number) => {
+        currentBalances[field] += amount;
+        return { ...SETTINGS, ...currentBalances };
+      }
     );
     mockTransaction = mock.fn(async (callback: (tx: unknown) => Promise<unknown>) =>
       callback(FAKE_TX)
@@ -159,6 +187,7 @@ describe("EditWorkdayService", async () => {
     );
     injectCacheStub(userSettingsRepoKey, {
       decrementLeaveBalance: mockDecrementLeaveBalance,
+      creditLeaveBalance: mockCreditLeaveBalance,
     });
 
     // ── SettingsService stub ──────────────────────────────────────────────────
@@ -231,7 +260,9 @@ describe("EditWorkdayService", async () => {
     mockGetSettingsOrThrow?.mock.resetCalls();
     mockApplyPendingLeaveAccrual?.mock.resetCalls();
     mockDecrementLeaveBalance?.mock.resetCalls();
+    mockCreditLeaveBalance?.mock.resetCalls();
     mockTransaction?.mock.resetCalls();
+    resetCurrentBalances();
   });
 
   // ── assertActionAllowed ───────────────────────────────────────────────────────
@@ -741,6 +772,203 @@ describe("EditWorkdayService", async () => {
       it("does not require debitDays for ELECTION", async () => {
         await assert.doesNotReject(() => markAbsence("user1", "12-06", "ELECTION"));
       });
+    });
+  });
+
+  // ── markAbsence – refunds a previous debit on type/amount change ────────────
+
+  describe("markAbsence – refunds previous debit on type/amount change", () => {
+    it("refunds the previous debit and applies the new one when the type changes to a different balance (VACATION -> SICK)", async () => {
+      mockFindRecordByDate.mock.mockImplementationOnce(async () =>
+        makeAbsenceRecord("VACATION", DAILY_MIN, "vacationBalance", 1)
+      );
+
+      const result = await markAbsence("user1", "12-06", "SICK", 1);
+
+      assert.equal(mockCreditLeaveBalance.mock.calls.length, 1);
+      assert.equal(mockCreditLeaveBalance.mock.calls[0].arguments[0], "user1");
+      assert.equal(mockCreditLeaveBalance.mock.calls[0].arguments[1], "vacationBalance");
+      assert.equal(mockCreditLeaveBalance.mock.calls[0].arguments[2], 1);
+
+      assert.equal(mockDecrementLeaveBalance.mock.calls.length, 1);
+      assert.equal(mockDecrementLeaveBalance.mock.calls[0].arguments[1], "sickBalance");
+      assert.equal(mockDecrementLeaveBalance.mock.calls[0].arguments[2], 1);
+
+      assert.deepEqual(result.leaveRefund, {
+        field: "vacationBalance",
+        amount: 1,
+        newBalance: SETTINGS.vacationBalance + 1,
+      });
+      assert.deepEqual(result.leaveDebit, {
+        field: "sickBalance",
+        amount: 1,
+        newBalance: SETTINGS.sickBalance - 1,
+      });
+    });
+
+    it("nets out correctly when the refund and the new debit target the same field (VACATION -> HOLIDAY, both vacationBalance)", async () => {
+      mockFindRecordByDate.mock.mockImplementationOnce(async () =>
+        makeAbsenceRecord("VACATION", DAILY_MIN, "vacationBalance", 1)
+      );
+
+      const result = await markAbsence("user1", "12-06", "HOLIDAY", 0.5);
+
+      assert.equal(mockCreditLeaveBalance.mock.calls[0].arguments[2], 1);
+      assert.equal(mockDecrementLeaveBalance.mock.calls[0].arguments[2], 0.5);
+
+      // Net: 10 (base) + 1 (refund) - 0.5 (new debit) = 10.5 — both fields of
+      // the response reflect the final, post-both-operations balance.
+      const expectedFinal = SETTINGS.vacationBalance + 1 - 0.5;
+      assert.equal(result.leaveRefund?.newBalance, expectedFinal);
+      assert.equal(result.leaveDebit?.newBalance, expectedFinal);
+    });
+
+    it("refunds with no new debit when changing to a non-debitable type (VACATION -> UNPAID_ABSENCE)", async () => {
+      mockFindRecordByDate.mock.mockImplementationOnce(async () =>
+        makeAbsenceRecord("VACATION", DAILY_MIN, "vacationBalance", 1)
+      );
+
+      const result = await markAbsence("user1", "12-06", "UNPAID_ABSENCE");
+
+      assert.equal(mockCreditLeaveBalance.mock.calls.length, 1);
+      assert.equal(mockDecrementLeaveBalance.mock.calls.length, 0);
+
+      assert.deepEqual(result.leaveRefund, {
+        field: "vacationBalance",
+        amount: 1,
+        newBalance: SETTINGS.vacationBalance + 1,
+      });
+      assert.equal(result.leaveDebit, null);
+
+      const upsertArg = mockUpsertRecordByDate.mock.calls[0].arguments[0];
+      assert.equal(upsertArg.debitedLeaveField, null);
+      assert.equal(upsertArg.debitedLeaveDays, null);
+    });
+
+    it("stamps the new record with the new debit's field and amount", async () => {
+      mockFindRecordByDate.mock.mockImplementationOnce(async () =>
+        makeAbsenceRecord("VACATION", DAILY_MIN, "vacationBalance", 1)
+      );
+
+      await markAbsence("user1", "12-06", "SICK", 2);
+
+      const upsertArg = mockUpsertRecordByDate.mock.calls[0].arguments[0];
+      assert.equal(upsertArg.debitedLeaveField, "sickBalance");
+      assert.equal(upsertArg.debitedLeaveDays, 2);
+    });
+
+    it("does not attempt a refund for a fresh NO_RECORD -> VACATION marking", async () => {
+      // default mockFindRecordByDate returns null (NO_RECORD)
+      const result = await markAbsence("user1", "12-06", "VACATION", 1);
+
+      assert.equal(mockCreditLeaveBalance.mock.calls.length, 0);
+      assert.equal(result.leaveRefund, null);
+    });
+
+    it("does not attempt a refund for a pre-existing record with no tracked debit (legacy record)", async () => {
+      // debitedLeaveField/Days default to null — simulates a record created
+      // before this feature shipped, when the columns didn't exist yet.
+      mockFindRecordByDate.mock.mockImplementationOnce(async () =>
+        makeAbsenceRecord("VACATION", DAILY_MIN)
+      );
+
+      const result = await markAbsence("user1", "12-06", "SICK", 1);
+
+      assert.equal(mockCreditLeaveBalance.mock.calls.length, 0);
+      assert.equal(result.leaveRefund, null);
+      // The new debit still applies normally.
+      assert.equal(mockDecrementLeaveBalance.mock.calls.length, 1);
+    });
+
+    it("opens a transaction for a refund even when the new type is non-debitable", async () => {
+      mockFindRecordByDate.mock.mockImplementationOnce(async () =>
+        makeAbsenceRecord("VACATION", DAILY_MIN, "vacationBalance", 1)
+      );
+
+      await markAbsence("user1", "12-06", "UNPAID_ABSENCE");
+
+      assert.equal(mockTransaction.mock.calls.length, 1);
+    });
+
+    it("passes the same transaction handle to the upsert, the refund, and the new debit", async () => {
+      mockFindRecordByDate.mock.mockImplementationOnce(async () =>
+        makeAbsenceRecord("VACATION", DAILY_MIN, "vacationBalance", 1)
+      );
+
+      await markAbsence("user1", "12-06", "SICK", 1);
+
+      assert.equal(mockUpsertRecordByDate.mock.calls[0].arguments[1], FAKE_TX);
+      assert.equal(mockCreditLeaveBalance.mock.calls[0].arguments[3], FAKE_TX);
+      assert.equal(mockDecrementLeaveBalance.mock.calls[0].arguments[3], FAKE_TX);
+    });
+  });
+
+  // ── setStartAndEndHours – refunds a previous debit ───────────────────────────
+
+  describe("setStartAndEndHours – refunds previous debit", () => {
+    it("refunds the previous debit when converting a previously-debited absence day to worked hours", async () => {
+      mockFindRecordByDate.mock.mockImplementationOnce(async () =>
+        makeAbsenceRecord("VACATION", DAILY_MIN, "vacationBalance", 1)
+      );
+
+      const result = await setStartAndEndHours("user1", "12-06", "08:00", "16:00");
+
+      assert.equal(mockCreditLeaveBalance.mock.calls.length, 1);
+      assert.equal(mockCreditLeaveBalance.mock.calls[0].arguments[0], "user1");
+      assert.equal(mockCreditLeaveBalance.mock.calls[0].arguments[1], "vacationBalance");
+      assert.equal(mockCreditLeaveBalance.mock.calls[0].arguments[2], 1);
+
+      assert.deepEqual(result.leaveRefund, {
+        field: "vacationBalance",
+        amount: 1,
+        newBalance: SETTINGS.vacationBalance + 1,
+      });
+
+      const upsertArg = mockUpsertRecordByDate.mock.calls[0].arguments[0];
+      assert.equal(upsertArg.debitedLeaveField, null);
+      assert.equal(upsertArg.debitedLeaveDays, null);
+    });
+
+    it("does not attempt a refund when the existing record is a plain WORK record", async () => {
+      mockFindRecordByDate.mock.mockImplementationOnce(async () => makeWorkRecord(true));
+
+      const result = await setStartAndEndHours("user1", "12-06", "08:00", "16:00");
+
+      assert.equal(mockCreditLeaveBalance.mock.calls.length, 0);
+      assert.equal(result.leaveRefund, null);
+    });
+
+    it("does not attempt a refund for NO_RECORD", async () => {
+      const result = await setStartAndEndHours("user1", "12-06", "08:00", "16:00");
+
+      assert.equal(mockCreditLeaveBalance.mock.calls.length, 0);
+      assert.equal(result.leaveRefund, null);
+    });
+
+    it("catches up pending leave accrual first (via applyPendingLeaveAccrual, not getSettingsOrThrow)", async () => {
+      await setStartAndEndHours("user1", "12-06", "08:00", "16:00");
+
+      assert.equal(mockApplyPendingLeaveAccrual.mock.calls.length, 1);
+      assert.equal(mockGetSettingsOrThrow.mock.calls.length, 0);
+    });
+
+    it("opens a transaction and shares the tx handle when there's a previous debit", async () => {
+      mockFindRecordByDate.mock.mockImplementationOnce(async () =>
+        makeAbsenceRecord("SICK", DAILY_MIN, "sickBalance", 1.5)
+      );
+
+      await setStartAndEndHours("user1", "12-06", "08:00", "16:00");
+
+      assert.equal(mockTransaction.mock.calls.length, 1);
+      assert.equal(mockUpsertRecordByDate.mock.calls[0].arguments[1], FAKE_TX);
+      assert.equal(mockCreditLeaveBalance.mock.calls[0].arguments[3], FAKE_TX);
+    });
+
+    it("does not open a transaction when there's nothing to refund", async () => {
+      await setStartAndEndHours("user1", "12-06", "08:00", "16:00");
+
+      assert.equal(mockTransaction.mock.calls.length, 0);
+      assert.equal(mockUpsertRecordByDate.mock.calls[0].arguments[1], undefined);
     });
   });
 });
