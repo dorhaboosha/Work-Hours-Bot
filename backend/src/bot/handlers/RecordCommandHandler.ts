@@ -4,6 +4,7 @@ import { getSettingsOrThrow } from "@/services/SettingsService";
 import { getLocalDate } from "@/utils/DateUtils";
 import { handleBotError } from "@/bot/utils/handleBotError";
 import { formatTime, formatMinutesAsDuration } from "@/bot/utils/formatMessage";
+import { getCommandArgs } from "@/bot/utils/messageText";
 import { t } from "@/i18n";
 import { DD_MM_RE } from "@/constants/timeFormats";
 import type { AbsenceRecordType } from "@shared/types/CoreTypes";
@@ -13,8 +14,7 @@ export async function handleRecord(ctx: Context): Promise<void> {
   const telegramId = ctx.from?.id?.toString();
   if (!telegramId) return;
 
-  const text = (ctx.message && "text" in ctx.message ? ctx.message.text : "") ?? "";
-  const args = text.trim().split(/\s+/).slice(1);
+  const args = getCommandArgs(ctx);
 
   try {
     if (args.length > 1) {

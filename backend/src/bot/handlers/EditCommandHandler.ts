@@ -6,13 +6,13 @@ import { startEditFlow } from "@/bot/flows/editDayFlow";
 import type { AbsenceRecordType, DailyRecordType } from "@shared/types/CoreTypes";
 import { isAbsenceRecordType } from "@shared/utils/recordTypeUtils";
 import { DD_MM_RE } from "@/constants/timeFormats";
+import { getCommandArgs } from "@/bot/utils/messageText";
 
 export async function handleEdit(ctx: Context): Promise<void> {
   const telegramId = ctx.from?.id?.toString();
   if (!telegramId) return;
 
-  const text = (ctx.message && "text" in ctx.message ? ctx.message.text : "") ?? "";
-  const args = text.trim().split(/\s+/).slice(1);
+  const args = getCommandArgs(ctx);
 
   try {
     if (args.length === 0 || !DD_MM_RE.test(args[0])) {
