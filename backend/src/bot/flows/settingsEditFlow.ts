@@ -56,8 +56,8 @@ export async function handleSettingsEditStep(
     }
 
     case "settings_edit:hours": {
-      const hours = parseFloat(text);
-      if (isNaN(hours) || hours <= 0) {
+      const hours = parseStrictNumber(text);
+      if (hours === null || hours <= 0) {
         await ctx.reply(t("settingsEdit.invalidAskHours"), { parse_mode: "Markdown" });
         return;
       }
