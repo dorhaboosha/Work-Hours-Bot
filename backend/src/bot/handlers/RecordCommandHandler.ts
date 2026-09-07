@@ -21,22 +21,23 @@ export async function handleRecord(ctx: Context): Promise<void> {
       await ctx.reply(t("record.usageHint"), { parse_mode: "Markdown" }).catch(() => undefined);
       return;
     }
-
-    let ddMm: string;
-
-    if (args.length === 0) {
-      const settings = await getSettingsOrThrow(telegramId);
-      const today = getLocalDate(settings.timezone); // YYYY-MM-DD
-      const [yyyy, mm, dd] = today.split("-");
-      void yyyy;
-      ddMm = `${dd}-${mm}`;
-    } else if (!DD_MM_RE.test(args[0])) {
+    if (args.length === 1 && !DD_MM_RE.test(args[0])) {
       await ctx.reply(t("record.usageHint"), { parse_mode: "Markdown" }).catch(() => undefined);
       return;
+    }
+
+    const settings = await getSettingsOrThrow(telegramId);
+
+    let ddMm: string;
+    if (args.length === 0) {
+      const today = getLocalDate(settings.timezone); // YYYY-MM-DD
+      const [, mm, dd] = today.split("-");
+      ddMm = `${dd}-${mm}`;
     } else {
       ddMm = args[0];
     }
-    const lookup = await getDateRecord(telegramId, ddMm);
+
+    const lookup = await getDateRecord(telegramId, ddMm, settings);
     const { timezone } = lookup;
 
     let msg: string;
