@@ -27,8 +27,8 @@ export async function handleSetupStep(
 ): Promise<void> {
   switch (session.step) {
     case "setup:hours": {
-      const hours = parseFloat(text);
-      if (isNaN(hours) || hours <= 0) {
+      const hours = parseStrictNumber(text);
+      if (hours === null || hours <= 0) {
         await ctx.reply(t("setup.invalidHours"), { parse_mode: "Markdown" });
         return;
       }

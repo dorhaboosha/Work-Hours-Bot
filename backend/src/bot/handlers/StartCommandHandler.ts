@@ -11,7 +11,7 @@ export async function handleStart(ctx: Context): Promise<void> {
 
   try {
     const settings = await getSettingsOrThrow(telegramId);
-    const record = await startWorkday(telegramId);
+    const record = await startWorkday(telegramId, settings);
 
     const startStr = formatTime(record.startTime!, settings.timezone);
     const endStr = formatTime(record.expectedEndTime!, settings.timezone);

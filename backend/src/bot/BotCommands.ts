@@ -1,4 +1,6 @@
 import bot from "@/bot/Bot";
+import { Env } from "@/config/Env";
+import { createOwnerOnlyMiddleware } from "@/bot/middlewares/OwnerOnlyMiddleware";
 import { SessionStore } from "@/bot/session/SessionStore";
 import { handleSetup } from "@/bot/handlers/SetupCommandHandler";
 import { handleSettings } from "@/bot/handlers/SettingsCommandHandler";
@@ -19,6 +21,8 @@ import { handleConversation } from "@/bot/handlers/ConversationHandler";
  * Call this once during bootstrap, before bot.launch().
  */
 export function registerCommands(): void {
+  bot.use(createOwnerOnlyMiddleware(Env.OWNER_TELEGRAM_ID));
+
   // Clear any in-progress session when the user sends a new command.
   // This runs before every command handler so commands always start clean.
   bot.use((ctx, next) => {

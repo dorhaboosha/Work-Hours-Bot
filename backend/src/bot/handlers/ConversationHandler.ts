@@ -12,6 +12,7 @@ import { SessionStore } from "@/bot/session/SessionStore";
 import { handleSetupStep } from "@/bot/flows/setupFlow";
 import { handleSettingsEditStep } from "@/bot/flows/settingsEditFlow";
 import { handleEditStep } from "@/bot/flows/editDayFlow";
+import { getMessageText } from "@/bot/utils/messageText";
 
 export async function handleConversation(ctx: Context): Promise<void> {
   const userId = ctx.from?.id?.toString();
@@ -20,7 +21,7 @@ export async function handleConversation(ctx: Context): Promise<void> {
   const session = SessionStore.get(userId);
   if (!session) return;
 
-  const text = ((ctx.message && "text" in ctx.message ? ctx.message.text : "") ?? "").trim();
+  const text = getMessageText(ctx).trim();
 
   if (session.step.startsWith("setup:")) {
     await handleSetupStep(ctx, userId, text, session);

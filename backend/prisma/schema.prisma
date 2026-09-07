@@ -58,10 +58,13 @@ model DailyRecord {
   createdAt       DateTime        @default(now()) @map("created_at")
   updatedAt       DateTime        @updatedAt @map("updated_at")
 
+  // The unique constraint below already provides an index on [telegramId,
+  // workDate] (and, via its leading column, on telegramId alone), covering
+  // findRecordByDate/listRecordsByRange — no separate index needed for those.
   @@unique([telegramId, workDate])
-  @@index([telegramId])
-  @@index([telegramId, workDate])
-  @@index([telegramId, recordType])
-  @@index([telegramId, endTime])
+  // Covers findOpenWorkRecord's `WHERE telegramId = ? AND recordType = 'WORK'
+  // AND endTime IS NULL` as a single index instead of two separate
+  // single-purpose ones ([telegramId, recordType] and [telegramId, endTime]).
+  @@index([telegramId, recordType, endTime])
   @@map("daily_records")
 }

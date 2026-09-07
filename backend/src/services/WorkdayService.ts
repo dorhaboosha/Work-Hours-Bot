@@ -5,7 +5,7 @@ import {
   updateDailyRecord,
   listRecordsByRange,
 } from "@/repositories/DailyRecordRepository";
-import type { DailyRecord } from "@/generated/prisma/client";
+import type { DailyRecord, UserSettings } from "@/generated/prisma/client";
 import { getSettingsOrThrow } from "@/services/SettingsService";
 import {
   calcExpectedEndTime,
@@ -14,20 +14,15 @@ import {
   calcRemainingMinutes,
   calcBalance,
 } from "@/services/TimeCalculationService";
-import { getLocalDate, utcToLocalDate } from "@/utils/DateUtils";
+import {
+  getLocalDate,
+  utcToLocalDate,
+  resolveDdMmToDate,
+  localDateToUtcMidnight,
+} from "@/utils/DateUtils";
 import { AppError } from "@/utils/AppError";
-import { DateTime } from "luxon";
 import type { WorkdayStatus, EndWorkdayResult, DateRecordLookup } from "@shared/types/ViewTypes";
 import type { DailyRecordType, RecordLookupState } from "@shared/types/CoreTypes";
-import { resolveDdMmToDate } from "@/utils/DateUtils";
-
-/**
- * Converts a local YYYY-MM-DD date string to a UTC midnight Date so it can be
- * stored in the Prisma `@db.Date` column without timezone shift.
- */
-function localDateStringToUtcMidnight(dateStr: string): Date {
-  return DateTime.fromISO(dateStr, { zone: "utc" }).toJSDate();
-}
 
 /**
  * Starts today's workday for the given user.
@@ -37,17 +32,28 @@ function localDateStringToUtcMidnight(dateStr: string): Date {
  * - DAILY_RECORD_ALREADY_EXISTS – a record (open or closed) already exists for
  *                                  today's local date.
  * - USER_SETTINGS_NOT_FOUND     – no settings found (from getSettingsOrThrow).
+ *
+ * `settings` may be passed in when the caller has already loaded it (e.g. a
+ * bot handler that needs it for the reply text too), to avoid fetching twice.
  */
-export async function startWorkday(telegramId: string): Promise<DailyRecord> {
-  const settings = await getSettingsOrThrow(telegramId);
+export async function startWorkday(
+  telegramId: string,
+  settings?: UserSettings
+): Promise<DailyRecord> {
+  const resolvedSettings = settings ?? (await getSettingsOrThrow(telegramId));
 
-  const todayStr = getLocalDate(settings.timezone);
-  const todayDate = localDateStringToUtcMidnight(todayStr);
+  const todayStr = getLocalDate(resolvedSettings.timezone);
+  const todayDate = localDateToUtcMidnight(todayStr);
 
-  // Check for any open (unfinished) WORK record
-  const openRecord = await findOpenWorkRecord(telegramId);
+  // These two reads are independent — run them concurrently rather than
+  // only issuing the second after the first comes back null.
+  const [openRecord, existingToday] = await Promise.all([
+    findOpenWorkRecord(telegramId),
+    findRecordByDate(telegramId, todayDate),
+  ]);
+
   if (openRecord !== null) {
-    const openDateStr = utcToLocalDate(openRecord.workDate, settings.timezone);
+    const openDateStr = utcToLocalDate(openRecord.workDate, resolvedSettings.timezone);
     if (openDateStr !== todayStr) {
       // Open record is from a previous local date — user must fix it via /edit dd-mm
       throw new AppError(
@@ -63,7 +69,6 @@ export async function startWorkday(telegramId: string): Promise<DailyRecord> {
   }
 
   // Also guard against a closed record for today (duplicate date)
-  const existingToday = await findRecordByDate(telegramId, todayDate);
   if (existingToday !== null) {
     throw new AppError(
       "DAILY_RECORD_ALREADY_EXISTS",
@@ -74,7 +79,7 @@ export async function startWorkday(telegramId: string): Promise<DailyRecord> {
   const startTime = new Date();
   const expectedEndTime = calcExpectedEndTime(
     startTime,
-    settings.dailyRequiredMinutes
+    resolvedSettings.dailyRequiredMinutes
   );
 
   return createDailyRecord({ telegramId, workDate: todayDate, recordType: "WORK", startTime, expectedEndTime });
@@ -88,15 +93,16 @@ export async function startWorkday(telegramId: string): Promise<DailyRecord> {
  * - ACTIVE_RECORD_NOT_FOUND    – no open record for today.
  */
 export async function getTodayStatus(
-  telegramId: string
+  telegramId: string,
+  settings?: UserSettings
 ): Promise<WorkdayStatus> {
-  const settings = await getSettingsOrThrow(telegramId);
-  const todayStr = getLocalDate(settings.timezone);
+  const resolvedSettings = settings ?? (await getSettingsOrThrow(telegramId));
+  const todayStr = getLocalDate(resolvedSettings.timezone);
 
   const openRecord = await findOpenWorkRecord(telegramId);
 
   if (openRecord !== null) {
-    const openDateStr = utcToLocalDate(openRecord.workDate, settings.timezone);
+    const openDateStr = utcToLocalDate(openRecord.workDate, resolvedSettings.timezone);
     if (openDateStr !== todayStr) {
       throw new AppError(
         "PREVIOUS_RECORD_STILL_OPEN",
@@ -112,7 +118,7 @@ export async function getTodayStatus(
     const workedMinutesSoFar = calcWorkedMinutesSoFar(openRecord.startTime);
     const remainingMinutes = calcRemainingMinutes(
       workedMinutesSoFar,
-      settings.dailyRequiredMinutes
+      resolvedSettings.dailyRequiredMinutes
     );
 
     return {
@@ -142,15 +148,23 @@ export async function getTodayStatus(
  * - DAILY_RECORD_ALREADY_CLOSED   – today's record exists but is already closed.
  * - ACTIVE_RECORD_NOT_FOUND       – no open record and no closed record for today.
  */
-export async function endWorkday(telegramId: string): Promise<EndWorkdayResult> {
-  const settings = await getSettingsOrThrow(telegramId);
-  const todayStr = getLocalDate(settings.timezone);
-  const todayDate = localDateStringToUtcMidnight(todayStr);
+export async function endWorkday(
+  telegramId: string,
+  settings?: UserSettings
+): Promise<EndWorkdayResult> {
+  const resolvedSettings = settings ?? (await getSettingsOrThrow(telegramId));
+  const todayStr = getLocalDate(resolvedSettings.timezone);
+  const todayDate = localDateToUtcMidnight(todayStr);
 
-  const openRecord = await findOpenWorkRecord(telegramId);
+  // Independent reads — run concurrently. closedToday is only needed when
+  // openRecord turns out to be null, but issuing both up front saves a
+  // round trip in the common case where openRecord is what we need.
+  const [openRecord, closedToday] = await Promise.all([
+    findOpenWorkRecord(telegramId),
+    findRecordByDate(telegramId, todayDate),
+  ]);
   if (openRecord === null) {
     // No open record — check whether today already has a closed one
-    const closedToday = await findRecordByDate(telegramId, todayDate);
     if (closedToday !== null) {
       throw new AppError(
         "DAILY_RECORD_ALREADY_CLOSED",
@@ -163,7 +177,7 @@ export async function endWorkday(telegramId: string): Promise<EndWorkdayResult> 
     );
   }
 
-  const openDateStr = utcToLocalDate(openRecord.workDate, settings.timezone);
+  const openDateStr = utcToLocalDate(openRecord.workDate, resolvedSettings.timezone);
   if (openDateStr !== todayStr) {
     // Open record is from a previous date — direct user to /edit dd-mm
     throw new AppError(
@@ -178,7 +192,7 @@ export async function endWorkday(telegramId: string): Promise<EndWorkdayResult> 
   }
   const endTime = new Date();
   const workedMinutes = calcWorkedMinutes(openRecord.startTime, endTime);
-  const balanceMinutes = calcBalance(workedMinutes, settings.dailyRequiredMinutes);
+  const balanceMinutes = calcBalance(workedMinutes, resolvedSettings.dailyRequiredMinutes);
 
   const updated = await updateDailyRecord(openRecord.id, { endTime, workedMinutes });
 
@@ -193,7 +207,7 @@ export async function endWorkday(telegramId: string): Promise<EndWorkdayResult> 
     expectedEndTime: updated.expectedEndTime.toISOString(),
     endTime: updated.endTime!.toISOString(),
     workedMinutes: updated.workedMinutes!,
-    requiredMinutes: settings.dailyRequiredMinutes,
+    requiredMinutes: resolvedSettings.dailyRequiredMinutes,
     balanceMinutes,
   };
 }
@@ -211,16 +225,17 @@ export async function endWorkday(telegramId: string): Promise<EndWorkdayResult> 
  */
 export async function getDateRecord(
   telegramId: string,
-  ddMm: string
+  ddMm: string,
+  settings?: UserSettings
 ): Promise<DateRecordLookup> {
-  const settings = await getSettingsOrThrow(telegramId);
-  const workDateStr = resolveDdMmToDate(ddMm, settings.timezone);
-  const workDate = localDateStringToUtcMidnight(workDateStr);
+  const resolvedSettings = settings ?? (await getSettingsOrThrow(telegramId));
+  const workDateStr = resolveDdMmToDate(ddMm, resolvedSettings.timezone);
+  const workDate = localDateToUtcMidnight(workDateStr);
 
   const prisma = await findRecordByDate(telegramId, workDate);
 
   const state: RecordLookupState = resolveRecordLookupState(prisma);
-  const base = { workDate: workDateStr, displayDate: ddMm, timezone: settings.timezone };
+  const base = { workDate: workDateStr, displayDate: ddMm, timezone: resolvedSettings.timezone };
 
   if (state === "NO_RECORD") {
     return { ...base, state, record: null };
@@ -265,10 +280,10 @@ export async function listWorkdays(
   await getSettingsOrThrow(telegramId);
 
   const fromDate = from !== undefined
-    ? localDateStringToUtcMidnight(from)
+    ? localDateToUtcMidnight(from)
     : undefined;
   const toDate = to !== undefined
-    ? localDateStringToUtcMidnight(to)
+    ? localDateToUtcMidnight(to)
     : undefined;
 
   return listRecordsByRange(telegramId, fromDate, toDate);

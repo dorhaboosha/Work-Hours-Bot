@@ -1,36 +1,39 @@
 import express from "express";
 import helmet from "helmet";
-import rateLimit from "express-rate-limit";
-import { Env } from "@/config/Env";
-import { errorMiddleware } from "@/middlewares/ErrorMiddleware";
-import { createApiKeyMiddleware } from "@/middlewares/ApiKeyMiddleware";
-import settingsRouter from "@/routes/SettingsRoutes";
-import workdayRouter from "@/routes/WorkdayRoutes";
-import summaryRouter from "@/routes/SummaryRoutes";
+import { prisma } from "@/config/PrismaClient";
 
 const app = express();
 
 app.use(helmet());
 
-const apiRateLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  limit: 100,
-  standardHeaders: true,
-  legacyHeaders: false,
+/** How long the health check waits for the DB before reporting unhealthy. */
+const HEALTH_CHECK_TIMEOUT_MS = 2000;
+
+app.get("/health", async (_req, res) => {
+  // The HTTP response is bounded to HEALTH_CHECK_TIMEOUT_MS either way; this
+  // timer is only cleared so a fast, healthy check doesn't leave a dangling
+  // setTimeout alive for the rest of the window. The query itself is bounded
+  // server-side too, via the pool's statement_timeout (see PrismaClient.ts)
+  // — so a genuinely hung query still gets aborted and its connection freed,
+  // rather than being held forever regardless of what this race does.
+  let timeoutHandle: NodeJS.Timeout;
+  try {
+    await Promise.race([
+      prisma.$queryRaw`SELECT 1`,
+      new Promise((_resolve, reject) => {
+        timeoutHandle = setTimeout(
+          () => reject(new Error("Health check timed out waiting for the database")),
+          HEALTH_CHECK_TIMEOUT_MS
+        );
+      }),
+    ]);
+    res.json({ status: "ok" });
+  } catch (err) {
+    console.error("[Health] Database check failed:", err);
+    res.status(503).json({ status: "error" });
+  } finally {
+    clearTimeout(timeoutHandle!);
+  }
 });
-
-app.get("/health", (_req, res) => {
-  res.json({ status: "ok" });
-});
-
-const apiKeyMiddleware = createApiKeyMiddleware(Env.API_KEY);
-
-// Rate limit + API key check run before body parsing, so an unauthenticated
-// request never gets its (possibly large/malformed) body parsed.
-app.use("/api/settings", apiRateLimiter, apiKeyMiddleware, express.json(), settingsRouter);
-app.use("/api/workdays", apiRateLimiter, apiKeyMiddleware, express.json(), workdayRouter);
-app.use("/api/summaries", apiRateLimiter, apiKeyMiddleware, express.json(), summaryRouter);
-
-app.use(errorMiddleware);
 
 export default app;

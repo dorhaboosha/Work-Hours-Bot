@@ -11,7 +11,7 @@ export async function handleStatus(ctx: Context): Promise<void> {
 
   try {
     const settings = await getSettingsOrThrow(telegramId);
-    const status = await getTodayStatus(telegramId);
+    const status = await getTodayStatus(telegramId, settings);
 
     const startStr = formatTime(status.startTime, settings.timezone);
     const endStr = formatTime(status.expectedEndTime, settings.timezone);

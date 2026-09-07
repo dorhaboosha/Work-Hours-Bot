@@ -11,7 +11,7 @@ export async function handleEnd(ctx: Context): Promise<void> {
 
   try {
     const settings = await getSettingsOrThrow(telegramId);
-    const result = await endWorkday(telegramId);
+    const result = await endWorkday(telegramId, settings);
 
     const startStr = formatTime(result.startTime, settings.timezone);
     const endStr = formatTime(result.endTime, settings.timezone);

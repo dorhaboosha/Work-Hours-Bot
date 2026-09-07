@@ -64,29 +64,28 @@ It was built as a backend-focused project with an emphasis on clean architecture
 The application follows a layered architecture that separates presentation, business logic, and data access.
 
 ```text
-          Telegram                    REST API
-              │                           │
-              ▼                           ▼
-        Telegraf Bot              REST Controllers
-              │                           │
-              ▼                           │
-    Conversation Flows                    │
-              │                           │
-              ▼                           │
-    Telegram Handlers                     │
-              │                           │
-              └──────────┬────────────────┘
-                         ▼
-               Business Services
-                         │
-                   Repositories
-                         │
-                    Prisma ORM
-                         │
-                   PostgreSQL
+                Telegram
+                    │
+                    ▼
+              Telegraf Bot
+                    │
+                    ▼
+          Conversation Flows
+                    │
+                    ▼
+          Telegram Handlers
+                    │
+                    ▼
+           Business Services
+                    │
+                Repositories
+                    │
+                 Prisma ORM
+                    │
+                PostgreSQL
 ```
 
-Both the Telegram bot and the REST API share the same business service layer to keep the application modular and avoid duplicated logic.
+This is a personal, single-user bot: every update is checked against `OWNER_TELEGRAM_ID` before any handler runs, so only the owner's Telegram account can use it. A minimal Express server exposes `GET /health` for the hosting platform's health checks.
 
 ## Data Retention
 
@@ -117,20 +116,17 @@ A background job (`backend/src/jobs/RecordRetentionJob.ts`) purges daily work re
 
 ```
 WorkHours-Bot/
-├── backend/                 # Express API + Telegram bot
+├── backend/                 # Telegram bot (+ minimal health-check server)
 │   ├── prisma/              # Schema and migrations
 │   └── src/
-│       ├── bot/             # Handlers, conversation flows, session store
+│       ├── bot/             # Handlers, conversation flows, session store,
+│       │                    #   owner-only access middleware
 │       ├── constants/       # Time formats, timezones, edit actions, etc.
-│       ├── controllers/     # REST API controllers
 │       ├── jobs/            # Scheduled background jobs (e.g. record retention purge)
 │       ├── lang/            # botLabels.json (English bot messages)
-│       ├── middlewares/     # Express middleware (validation, error handling)
 │       ├── repositories/    # Data access layer (Prisma)
-│       ├── routes/          # Express route definitions
 │       ├── services/        # Business logic layer
-│       ├── utils/           # Shared helpers (dates, errors, API responses)
-│       └── validators/      # Request validation (Zod)
+│       └── utils/           # Shared helpers (dates, errors)
 ├── shared/                  # Shared types and utilities
 │   └── src/
 │       ├── types/
@@ -148,7 +144,7 @@ Key design decisions include:
 - Layered architecture to separate presentation, business logic, and data access.
 - Prisma ORM for type-safe database operations.
 - PostgreSQL for reliable relational data storage.
-- Zod for runtime validation of incoming requests.
+- Zod for runtime validation of environment configuration.
 - Shared workspace for reusable types and utilities.
 - Configuration-driven bot messages using a centralized JSON labels file.
 
@@ -194,6 +190,7 @@ Edit `backend/.env` and set at minimum:
 |---|---|
 | `DATABASE_URL` | `postgresql://workhours:workhours_password@localhost:5435/workhours_bot` |
 | `TELEGRAM_BOT_TOKEN` | Your token from BotFather |
+| `OWNER_TELEGRAM_ID` | Your numeric Telegram user ID (from [@userinfobot](https://t.me/userinfobot)) — the bot ignores everyone else |
 | `NODE_ENV` | `development` |
 
 `PORT` defaults to `3000` if omitted. See `backend/.env.example` for production notes.
@@ -244,10 +241,11 @@ Set these on the Render Web Service (see also `backend/.env.example` for local d
 |---|---|---|
 | `DATABASE_URL` | Yes | PostgreSQL connection string. Use Render's **Internal** URL when the database and web service are in the same region. |
 | `TELEGRAM_BOT_TOKEN` | Yes | Bot token from [@BotFather](https://t.me/BotFather). Mark as **Secret** in Render. |
+| `OWNER_TELEGRAM_ID` | Yes | Your numeric Telegram user ID (from [@userinfobot](https://t.me/userinfobot)). The bot silently ignores every other Telegram user. |
 | `NODE_ENV` | Yes | Set to `production`. |
 | `PORT` | No | Injected automatically by Render. Do not set manually in production. |
 
-Locally, copy `backend/.env.example` to `backend/.env` and fill in `DATABASE_URL` and `TELEGRAM_BOT_TOKEN`. `PORT` defaults to `3000` for local dev.
+Locally, copy `backend/.env.example` to `backend/.env` and fill in `DATABASE_URL`, `TELEGRAM_BOT_TOKEN`, and `OWNER_TELEGRAM_ID`. `PORT` defaults to `3000` for local dev.
 
 ## Scripts
 
@@ -265,6 +263,7 @@ Additional backend scripts (run from `backend/` or with `-w backend`):
 | Command | Description |
 |---|---|
 | `npm run migrate:deploy -w backend` | Apply pending Prisma migrations (production / Render) |
+| `npm run test:integration -w backend` | Run integration tests (`*.itest.ts`) against a real Postgres — requires `docker compose up -d` and migrations applied first. Refuses to run unless `DATABASE_URL` points at localhost. |
 
 ## Contributing
 

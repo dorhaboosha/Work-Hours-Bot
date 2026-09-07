@@ -1,23 +1,14 @@
-import { DateTime } from "luxon";
 import type { Weekday } from "@shared/types/CoreTypes";
 import type { DailyRecord } from "@/generated/prisma/client";
 import { listRecordsByRange, findOpenWorkRecord } from "@/repositories/DailyRecordRepository";
 import { getSettingsOrThrow } from "@/services/SettingsService";
-import { getLocalDate, utcToLocalDate } from "@/utils/DateUtils";
+import { getLocalDate, utcToLocalDate, localDateToUtcMidnight } from "@/utils/DateUtils";
 import { calcWorkedMinutesSoFar } from "@/services/TimeCalculationService";
 import { AppError } from "@/utils/AppError";
 import type { WorkSummary } from "@shared/types/ViewTypes";
 import { getWeekWindow, getMonthWindow } from "@/utils/dateRangeUtils";
 
 // ── Aggregation ───────────────────────────────────────────────────────────────
-
-/**
- * Converts a local YYYY-MM-DD date string to a UTC midnight Date for use as a
- * Prisma `@db.Date` range boundary.
- */
-function localDateToUtcMidnight(dateStr: string): Date {
-  return DateTime.fromISO(dateStr, { zone: "utc" }).toJSDate();
-}
 
 interface AggregateResult {
   workdaysCount: number;
