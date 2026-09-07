@@ -8,7 +8,8 @@
     "build": "prisma generate && tsc && tsc-alias",
     "start": "node dist/backend/src/server.js",
     "migrate:deploy": "prisma migrate deploy",
-    "test": "node -r ts-node/register -r tsconfig-paths/register --test src/**/*.test.ts"
+    "test": "node -r ts-node/register -r tsconfig-paths/register --test src/**/*.test.ts",
+    "test:integration": "node -r dotenv/config -r ts-node/register -r tsconfig-paths/register --test src/**/*.itest.ts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.8.0",

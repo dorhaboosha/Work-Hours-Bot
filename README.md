@@ -263,6 +263,7 @@ Additional backend scripts (run from `backend/` or with `-w backend`):
 | Command | Description |
 |---|---|
 | `npm run migrate:deploy -w backend` | Apply pending Prisma migrations (production / Render) |
+| `npm run test:integration -w backend` | Run integration tests (`*.itest.ts`) against a real Postgres — requires `docker compose up -d` and migrations applied first. Refuses to run unless `DATABASE_URL` points at localhost. |
 
 ## Contributing
 
