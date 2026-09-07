@@ -14,9 +14,6 @@ const envSchema = z.object({
   OWNER_TELEGRAM_ID: z
     .string()
     .regex(/^\d+$/, "OWNER_TELEGRAM_ID must be a numeric Telegram user ID"),
-  API_KEY: z
-    .string()
-    .min(16, "API_KEY is required and must be at least 16 characters"),
   NODE_ENV: z
     .enum(["development", "production", "test"])
     .default("development"),
