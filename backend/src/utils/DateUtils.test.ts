@@ -4,10 +4,12 @@ import { DateTime } from "luxon";
 import {
   resolveDdMmToDate,
   localTimeToUtc,
+  localDateToUtcMidnight,
   startOfCurrentUtcMonth,
   retentionCutoff,
   isValidTimezone,
 } from "./DateUtils";
+import { AppError } from "@/utils/AppError";
 
 describe("isValidTimezone", () => {
   it("accepts recognized IANA zone names", () => {
@@ -48,6 +50,41 @@ describe("resolveDdMmToDate", () => {
     const result = resolveDdMmToDate("15-03", "America/New_York");
 
     assert.match(result, /^\d{4}-03-15$/);
+  });
+});
+
+describe("localDateToUtcMidnight", () => {
+  it("converts a YYYY-MM-DD string to UTC midnight of that date", () => {
+    const result = localDateToUtcMidnight("2026-06-15");
+    assert.equal(result.toISOString(), "2026-06-15T00:00:00.000Z");
+  });
+
+  it("rejects a string with a time component", () => {
+    assert.throws(
+      () => localDateToUtcMidnight("2026-06-15T10:30:00"),
+      (err: unknown) => err instanceof AppError && err.code === "INVALID_DATE_FORMAT"
+    );
+  });
+
+  it("rejects a string that isn't shaped like YYYY-MM-DD", () => {
+    assert.throws(
+      () => localDateToUtcMidnight("15-06-2026"),
+      (err: unknown) => err instanceof AppError && err.code === "INVALID_DATE_FORMAT"
+    );
+  });
+
+  it("rejects a YYYY-MM-DD-shaped string that isn't a real calendar date", () => {
+    assert.throws(
+      () => localDateToUtcMidnight("2026-02-30"),
+      (err: unknown) => err instanceof AppError && err.code === "INVALID_DATE_FORMAT"
+    );
+  });
+
+  it("rejects an empty string", () => {
+    assert.throws(
+      () => localDateToUtcMidnight(""),
+      (err: unknown) => err instanceof AppError && err.code === "INVALID_DATE_FORMAT"
+    );
   });
 });
 

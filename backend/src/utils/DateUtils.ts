@@ -20,9 +20,28 @@ export function isValidTimezone(timezone: string): boolean {
  * Converts a local YYYY-MM-DD date string to a UTC midnight Date so it can be
  * stored in / compared against the Prisma `@db.Date` `workDate` column
  * without a timezone shift.
+ *
+ * Strict on purpose: rejects anything that isn't exactly YYYY-MM-DD (no time
+ * component, no partial ISO strings) and anything that isn't a real calendar
+ * date (e.g. "2026-02-30"), so a bad value fails loudly here rather than
+ * silently becoming an Invalid Date that only surfaces as an opaque error
+ * later, at the Prisma/pg layer.
  */
 export function localDateToUtcMidnight(dateStr: string): Date {
-  return DateTime.fromISO(dateStr, { zone: "utc" }).toJSDate();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+    throw new AppError(
+      "INVALID_DATE_FORMAT",
+      `"${dateStr}" is not a YYYY-MM-DD date string.`
+    );
+  }
+  const dt = DateTime.fromISO(dateStr, { zone: "utc" });
+  if (!dt.isValid) {
+    throw new AppError(
+      "INVALID_DATE_FORMAT",
+      `"${dateStr}" is not a valid calendar date (${dt.invalidReason ?? "invalid date"}).`
+    );
+  }
+  return dt.toJSDate();
 }
 
 /**

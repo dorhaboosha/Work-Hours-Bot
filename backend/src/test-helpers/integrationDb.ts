@@ -20,18 +20,34 @@ export function testTelegramId(): string {
   return `${TEST_ID_PREFIX}${randomUUID()}`;
 }
 
+const LOCAL_HOSTNAMES = new Set(["localhost", "127.0.0.1", "::1"]);
+
 /**
  * Refuses to run when DATABASE_URL doesn't look like a local database.
  * Integration tests delete rows by telegramId prefix — cheap insurance
  * against ever pointing this at a real (e.g. Render) database by mistake.
  * Call once per test file, in a top-level `before()`.
+ *
+ * Parses the URL and checks the hostname for an *exact* match against
+ * localhost/127.0.0.1/::1 — a substring/regex check on the raw string would
+ * also pass something like "evil-localhost-lookalike.attacker.com", which
+ * contains "localhost" as a substring but isn't local at all.
  */
 export function assertSafeTestDatabase(): void {
-  if (!/^postgresql:\/\/[^/]*(localhost|127\.0\.0\.1)/.test(Env.DATABASE_URL)) {
+  let hostname: string;
+  try {
+    hostname = new URL(Env.DATABASE_URL).hostname;
+  } catch {
     throw new Error(
-      "Refusing to run integration tests: DATABASE_URL does not look like a local database " +
-        "(expected localhost/127.0.0.1). Point it at your docker-compose Postgres " +
-        "(see backend/.env.example) before running `npm run test:integration`."
+      "Refusing to run integration tests: DATABASE_URL is not a valid URL."
+    );
+  }
+
+  if (!LOCAL_HOSTNAMES.has(hostname)) {
+    throw new Error(
+      `Refusing to run integration tests: DATABASE_URL's host ("${hostname}") does not look ` +
+        "like a local database (expected localhost/127.0.0.1). Point it at your docker-compose " +
+        "Postgres (see backend/.env.example) before running `npm run test:integration`."
     );
   }
 }
