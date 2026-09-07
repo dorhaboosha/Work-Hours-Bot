@@ -1,11 +1,10 @@
-import { DateTime } from "luxon";
 import { prisma } from "@/config/PrismaClient";
 import { findRecordByDate, updateDailyRecord, upsertRecordByDate } from "@/repositories/DailyRecordRepository";
 import { decrementLeaveBalance, creditLeaveBalance } from "@/repositories/UserSettingsRepository";
 import type { LeaveBalanceField } from "@/repositories/UserSettingsRepository";
 import { getSettingsOrThrow } from "@/services/SettingsService";
 import { applyPendingLeaveAccrual } from "@/services/LeaveBalanceService";
-import { resolveDdMmToDate, localTimeToUtc } from "@/utils/DateUtils";
+import { resolveDdMmToDate, localTimeToUtc, localDateToUtcMidnight } from "@/utils/DateUtils";
 import { AppError } from "@/utils/AppError";
 import { calcExpectedEndTime, calcWorkedMinutes, calcBalance } from "@/services/TimeCalculationService";
 import type { DailyRecord as PrismaRecord, UserSettings } from "@/generated/prisma/client";
@@ -13,11 +12,6 @@ import type { DailyRecord } from "@shared/types/CoreTypes";
 import type { EditDayOptions, EditWorkdayResult } from "@shared/types/ViewTypes";
 import type { EditRecordState, EditAction, DailyRecordType, AbsenceRecordType } from "@shared/types/CoreTypes";
 import { calculateCreditedMinutes, getLeaveBalanceField } from "@shared/utils/recordTypeUtils";
-
-/** Converts a YYYY-MM-DD string to a UTC midnight Date for Prisma date column lookups. */
-function localDateToUtcMidnight(dateStr: string): Date {
-  return DateTime.fromISO(dateStr, { zone: "utc" }).toJSDate();
-}
 
 /** Derives the EditRecordState from the raw Prisma record. */
 function resolveState(record: PrismaRecord | null): EditRecordState {

@@ -14,20 +14,15 @@ import {
   calcRemainingMinutes,
   calcBalance,
 } from "@/services/TimeCalculationService";
-import { getLocalDate, utcToLocalDate } from "@/utils/DateUtils";
+import {
+  getLocalDate,
+  utcToLocalDate,
+  resolveDdMmToDate,
+  localDateToUtcMidnight,
+} from "@/utils/DateUtils";
 import { AppError } from "@/utils/AppError";
-import { DateTime } from "luxon";
 import type { WorkdayStatus, EndWorkdayResult, DateRecordLookup } from "@shared/types/ViewTypes";
 import type { DailyRecordType, RecordLookupState } from "@shared/types/CoreTypes";
-import { resolveDdMmToDate } from "@/utils/DateUtils";
-
-/**
- * Converts a local YYYY-MM-DD date string to a UTC midnight Date so it can be
- * stored in the Prisma `@db.Date` column without timezone shift.
- */
-function localDateStringToUtcMidnight(dateStr: string): Date {
-  return DateTime.fromISO(dateStr, { zone: "utc" }).toJSDate();
-}
 
 /**
  * Starts today's workday for the given user.
@@ -42,7 +37,7 @@ export async function startWorkday(telegramId: string): Promise<DailyRecord> {
   const settings = await getSettingsOrThrow(telegramId);
 
   const todayStr = getLocalDate(settings.timezone);
-  const todayDate = localDateStringToUtcMidnight(todayStr);
+  const todayDate = localDateToUtcMidnight(todayStr);
 
   // Check for any open (unfinished) WORK record
   const openRecord = await findOpenWorkRecord(telegramId);
@@ -145,7 +140,7 @@ export async function getTodayStatus(
 export async function endWorkday(telegramId: string): Promise<EndWorkdayResult> {
   const settings = await getSettingsOrThrow(telegramId);
   const todayStr = getLocalDate(settings.timezone);
-  const todayDate = localDateStringToUtcMidnight(todayStr);
+  const todayDate = localDateToUtcMidnight(todayStr);
 
   const openRecord = await findOpenWorkRecord(telegramId);
   if (openRecord === null) {
@@ -215,7 +210,7 @@ export async function getDateRecord(
 ): Promise<DateRecordLookup> {
   const settings = await getSettingsOrThrow(telegramId);
   const workDateStr = resolveDdMmToDate(ddMm, settings.timezone);
-  const workDate = localDateStringToUtcMidnight(workDateStr);
+  const workDate = localDateToUtcMidnight(workDateStr);
 
   const prisma = await findRecordByDate(telegramId, workDate);
 
@@ -265,10 +260,10 @@ export async function listWorkdays(
   await getSettingsOrThrow(telegramId);
 
   const fromDate = from !== undefined
-    ? localDateStringToUtcMidnight(from)
+    ? localDateToUtcMidnight(from)
     : undefined;
   const toDate = to !== undefined
-    ? localDateStringToUtcMidnight(to)
+    ? localDateToUtcMidnight(to)
     : undefined;
 
   return listRecordsByRange(telegramId, fromDate, toDate);

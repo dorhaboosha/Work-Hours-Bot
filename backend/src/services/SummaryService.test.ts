@@ -160,6 +160,7 @@ describe("SummaryService", async () => {
       manualEndTimeToUtc: realDateUtils.manualEndTimeToUtc,
       addMinutesUtc: realDateUtils.addMinutesUtc,
       minutesBetween: realDateUtils.minutesBetween,
+      localDateToUtcMidnight: realDateUtils.localDateToUtcMidnight,
     });
 
     // ── Load dateRangeUtils (no stubs needed — pure date math) ───────────────

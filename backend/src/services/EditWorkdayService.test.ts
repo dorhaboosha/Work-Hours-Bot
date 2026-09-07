@@ -230,6 +230,7 @@ describe("EditWorkdayService", async () => {
       minutesBetween:     realDateUtils.minutesBetween,
       manualEndTimeToUtc: realDateUtils.manualEndTimeToUtc,
       localTimeToUtc:     realDateUtils.localTimeToUtc,
+      localDateToUtcMidnight: realDateUtils.localDateToUtcMidnight,
       resolveDdMmToDate:  () => FIXED_DATE, // deterministic, avoids year dependency
     });
 

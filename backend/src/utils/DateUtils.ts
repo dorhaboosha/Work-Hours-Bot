@@ -17,6 +17,15 @@ export function isValidTimezone(timezone: string): boolean {
 }
 
 /**
+ * Converts a local YYYY-MM-DD date string to a UTC midnight Date so it can be
+ * stored in / compared against the Prisma `@db.Date` `workDate` column
+ * without a timezone shift.
+ */
+export function localDateToUtcMidnight(dateStr: string): Date {
+  return DateTime.fromISO(dateStr, { zone: "utc" }).toJSDate();
+}
+
+/**
  * Returns today's local date as a YYYY-MM-DD string in the given timezone.
  * This is what gets stored as `workDate` on a new daily record.
  */

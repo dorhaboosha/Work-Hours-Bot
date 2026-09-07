@@ -154,6 +154,7 @@ describe("WorkdayService", async () => {
       manualEndTimeToUtc: realDateUtils.manualEndTimeToUtc,
       addMinutesUtc: realDateUtils.addMinutesUtc,
       minutesBetween: realDateUtils.minutesBetween,
+      localDateToUtcMidnight: realDateUtils.localDateToUtcMidnight,
     });
 
     // Load WorkdayService fresh after all stubs are in place
