@@ -580,7 +580,7 @@ describe("EditWorkdayService", async () => {
     });
 
     it("credits HOLIDAY as full day", async () => {
-      const result = await markAbsence("user1", "12-06", "HOLIDAY", 1);
+      const result = await markAbsence("user1", "12-06", "HOLIDAY");
       assert.equal(result.workedMinutes, DAILY_MIN);
     });
 
@@ -590,7 +590,7 @@ describe("EditWorkdayService", async () => {
     });
 
     it("credits HOLIDAY_EVE as half day = floor(480 / 2) = 240 min", async () => {
-      const result = await markAbsence("user1", "12-06", "HOLIDAY_EVE", 0.5);
+      const result = await markAbsence("user1", "12-06", "HOLIDAY_EVE");
       assert.equal(result.workedMinutes, Math.floor(DAILY_MIN / 2)); // 240
       assert.equal(result.balanceMinutes, Math.floor(DAILY_MIN / 2) - DAILY_MIN); // -240
     });
@@ -659,16 +659,26 @@ describe("EditWorkdayService", async () => {
       });
     });
 
-    it("debits vacationBalance for HOLIDAY", async () => {
-      const result = await markAbsence("user1", "12-06", "HOLIDAY", 1);
-      assert.equal(mockDecrementLeaveBalance.mock.calls[0].arguments[1], "vacationBalance");
-      assert.equal(result.leaveDebit?.field, "vacationBalance");
+    it("never debits a balance for HOLIDAY (company-paid)", async () => {
+      const result = await markAbsence("user1", "12-06", "HOLIDAY");
+
+      assert.equal(mockDecrementLeaveBalance.mock.calls.length, 0);
+      assert.equal(result.leaveDebit, null);
     });
 
-    it("debits vacationBalance for HOLIDAY_EVE", async () => {
-      const result = await markAbsence("user1", "12-06", "HOLIDAY_EVE", 0.5);
-      assert.equal(mockDecrementLeaveBalance.mock.calls[0].arguments[1], "vacationBalance");
-      assert.equal(result.leaveDebit?.amount, 0.5);
+    it("never debits a balance for HOLIDAY_EVE (company-paid)", async () => {
+      const result = await markAbsence("user1", "12-06", "HOLIDAY_EVE");
+
+      assert.equal(mockDecrementLeaveBalance.mock.calls.length, 0);
+      assert.equal(result.leaveDebit, null);
+    });
+
+    it("ignores a debitDays argument passed for HOLIDAY", async () => {
+      const result = await markAbsence("user1", "12-06", "HOLIDAY", 1);
+
+      assert.equal(mockDecrementLeaveBalance.mock.calls.length, 0);
+      assert.equal(result.leaveDebit, null);
+      assert.equal(mockUpsertRecordByDate.mock.calls[0].arguments[0].debitedLeaveDays, null);
     });
 
     it("debits sickBalance for SICK", async () => {
@@ -750,9 +760,9 @@ describe("EditWorkdayService", async () => {
         );
       });
 
-      it("throws VALIDATION_ERROR when debitDays is negative for HOLIDAY", async () => {
+      it("throws VALIDATION_ERROR when debitDays is negative for VACATION", async () => {
         await assert.rejects(
-          () => markAbsence("user1", "12-06", "HOLIDAY", -1),
+          () => markAbsence("user1", "12-06", "VACATION", -1),
           (err: unknown) => {
             assert.equal((err as { code: string }).code, "VALIDATION_ERROR");
             return true;
@@ -772,6 +782,14 @@ describe("EditWorkdayService", async () => {
 
       it("does not require debitDays for ELECTION", async () => {
         await assert.doesNotReject(() => markAbsence("user1", "12-06", "ELECTION"));
+      });
+
+      it("does not require debitDays for HOLIDAY", async () => {
+        await assert.doesNotReject(() => markAbsence("user1", "12-06", "HOLIDAY"));
+      });
+
+      it("does not require debitDays for HOLIDAY_EVE", async () => {
+        await assert.doesNotReject(() => markAbsence("user1", "12-06", "HOLIDAY_EVE"));
       });
     });
   });
@@ -807,12 +825,12 @@ describe("EditWorkdayService", async () => {
       });
     });
 
-    it("nets out correctly when the refund and the new debit target the same field (VACATION -> HOLIDAY, both vacationBalance)", async () => {
+    it("nets out correctly when the refund and the new debit target the same field (VACATION 1 -> VACATION 0.5)", async () => {
       mockFindRecordByDate.mock.mockImplementationOnce(async () =>
         makeAbsenceRecord("VACATION", DAILY_MIN, "vacationBalance", 1)
       );
 
-      const result = await markAbsence("user1", "12-06", "HOLIDAY", 0.5);
+      const result = await markAbsence("user1", "12-06", "VACATION", 0.5);
 
       assert.equal(mockCreditLeaveBalance.mock.calls[0].arguments[2], 1);
       assert.equal(mockDecrementLeaveBalance.mock.calls[0].arguments[2], 0.5);
@@ -844,6 +862,23 @@ describe("EditWorkdayService", async () => {
       const upsertArg = mockUpsertRecordByDate.mock.calls[0].arguments[0];
       assert.equal(upsertArg.debitedLeaveField, null);
       assert.equal(upsertArg.debitedLeaveDays, null);
+    });
+
+    it("refunds with no new debit when re-marking a vacation day as a holiday (VACATION -> HOLIDAY)", async () => {
+      mockFindRecordByDate.mock.mockImplementationOnce(async () =>
+        makeAbsenceRecord("VACATION", DAILY_MIN, "vacationBalance", 1)
+      );
+
+      const result = await markAbsence("user1", "12-06", "HOLIDAY");
+
+      assert.equal(mockCreditLeaveBalance.mock.calls.length, 1);
+      assert.equal(mockDecrementLeaveBalance.mock.calls.length, 0);
+      assert.deepEqual(result.leaveRefund, {
+        field: "vacationBalance",
+        amount: 1,
+        newBalance: SETTINGS.vacationBalance + 1,
+      });
+      assert.equal(result.leaveDebit, null);
     });
 
     it("stamps the new record with the new debit's field and amount", async () => {
