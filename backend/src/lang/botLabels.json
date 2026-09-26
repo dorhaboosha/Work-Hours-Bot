@@ -94,14 +94,14 @@
     "absenceSaved": "✅ *{{absenceLabel}} saved*\n\n📅 Date:       *{{date}}*\n⏱ Counted as: *{{creditedStr}}*\n⚖️ Balance:    *{{balanceStr}}*",
     "leaveRefundLine": "\n↩️ Refunded:    *{{amount}} {{fieldLabel}} day(s)* (balance: {{newBalance}})",
     "leaveDebitLine": "\n➖ Debited:     *{{amount}} {{fieldLabel}} day(s)* (balance: {{newBalance}})",
-    "promptDebitAmount": "You marked this as *{{absenceLabel}}*.\n\nHow many days should be debited from your balance?\n\nMust be a multiple of 0.5 (e.g. `0.5`, `1`, `1.5`).",
+    "promptPortion": "You marked this as *{{absenceLabel}}*.\n\nHow much of the day?\n\n1. Full day\n2. Half day",
     "usageHint": "Usage: `/edit dd-mm` (e.g. `/edit 12-06`)",
     "cancelled": "↩️ Cancelled.",
     "invalidChoice": "❌ Please choose a number between 1 and {{maxChoice}}.",
     "invalidPromptEndHour": "❌ Enter end time:\n\nExample: 17:30",
     "invalidPromptStartAndEndHours": "❌ Enter start and end time:\n\nExample: 08:15-17:30",
     "invalidAbsenceTypeList": "❌ Choose absence type:\n\n1. Sick day\n2. Vacation day\n3. Holiday\n4. Holiday eve\n5. Unpaid absence\n6. Election day",
-    "invalidDebitAmount": "❌ Please enter a valid amount that's a multiple of 0.5 (e.g. `0.5`, `1`, `1.5`)."
+    "invalidPortion": "❌ How much of the day?\n\n1. Full day\n2. Half day"
   },
   "record": {
     "completedWork": "📋 *Record for {{date}}*\n\n🕐 Start:   *{{startStr}}*\n🏁 End:     *{{endStr}}*\n✅ Worked:  *{{workedStr}}*",
