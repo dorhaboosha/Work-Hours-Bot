@@ -32,7 +32,7 @@ export type SessionStep =
   | "edit:set_end_hour"
   | "edit:set_start_end"
   | "edit:choose_absence"
-  | "edit:choose_debit_amount";
+  | "edit:choose_portion";
 
 export interface SessionData {
   /** Collected during /setup flow */
@@ -45,7 +45,7 @@ export interface SessionData {
   ddMm?: string;
   /** EditRecordState string from the initial getEditDayOptions call */
   editState?: string;
-  /** AbsenceRecordType string, set while awaiting a debit amount for MARK_ABSENCE */
+  /** AbsenceRecordType string, set while awaiting the full/half day choice for MARK_ABSENCE */
   absenceType?: string;
 }
 

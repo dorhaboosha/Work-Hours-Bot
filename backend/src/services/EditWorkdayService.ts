@@ -277,8 +277,8 @@ export async function setStartAndEndHours(
  *
  * Allowed in all states (NO_RECORD, OPEN_WORK_RECORD, CLOSED_WORK_RECORD, ABSENCE_RECORD).
  *
- * For debitable absence types (VACATION/HOLIDAY/HOLIDAY_EVE → vacationBalance,
- * SICK → sickBalance — see getLeaveBalanceField), `debitDays` is required and
+ * For debitable absence types (VACATION → vacationBalance, SICK → sickBalance
+ * — see getLeaveBalanceField), `debitDays` is required and
  * is subtracted from the corresponding leave balance. This is independent of
  * the credited work-minutes above: the caller chooses the debit amount (any
  * multiple of 0.5), it does not have to match the all-or-half credit rule.

@@ -16,10 +16,11 @@ import { HH_MM_RE, HH_MM_RANGE_RE } from "@/constants/timeFormats";
 import { ABSENCE_TYPES } from "@/constants/absenceTypes";
 import { EDIT_ACTION_MAP } from "@/constants/editActions";
 import { getLeaveBalanceField } from "@shared/utils/recordTypeUtils";
-import { isMultipleOfHalf } from "@shared/utils/numberUtils";
-import { parseStrictNumber } from "@/bot/utils/timeInputParser";
 import type { AbsenceRecordType } from "@shared/types/CoreTypes";
 import type { EditWorkdayResult } from "@shared/types/ViewTypes";
+
+/** Maps the full/half day menu choice to the number of leave days debited. */
+const PORTION_DEBIT_DAYS: Record<string, number> = { "1": 1, "2": 0.5 };
 
 /**
  * Appends an optional refund line and/or an optional debit line to a base
@@ -168,10 +169,10 @@ export async function handleEditStep(
       const absenceType = ABSENCE_TYPES[idx - 1];
 
       if (getLeaveBalanceField(absenceType) !== null) {
-        // Debitable type — ask how many days to debit before saving.
+        // Debitable type — ask whether it was a full or half day before saving.
         const absenceLabel = t(`absenceType.${absenceType}`);
-        SessionStore.set(userId, { step: "edit:choose_debit_amount", data: { ddMm, absenceType } });
-        await ctx.reply(t("edit.promptDebitAmount", { absenceLabel }), { parse_mode: "Markdown" });
+        SessionStore.set(userId, { step: "edit:choose_portion", data: { ddMm, absenceType } });
+        await ctx.reply(t("edit.promptPortion", { absenceLabel }), { parse_mode: "Markdown" });
         break;
       }
 
@@ -194,15 +195,17 @@ export async function handleEditStep(
       break;
     }
 
-    case "edit:choose_debit_amount": {
+    case "edit:choose_portion": {
       const { ddMm, absenceType } = session.data;
       if (!ddMm || !absenceType) { SessionStore.clear(userId); return; }
 
-      const debitDays = parseStrictNumber(text);
-      if (debitDays === null || debitDays <= 0 || !isMultipleOfHalf(debitDays)) {
-        await ctx.reply(t("edit.invalidDebitAmount"), { parse_mode: "Markdown" });
+      // Own-key check so inherited names ("constructor", "__proto__", …) are
+      // rejected rather than resolving to Object.prototype members.
+      if (!Object.hasOwn(PORTION_DEBIT_DAYS, text)) {
+        await ctx.reply(t("edit.invalidPortion"), { parse_mode: "Markdown" });
         return;
       }
+      const debitDays = PORTION_DEBIT_DAYS[text];
 
       SessionStore.clear(userId);
       try {

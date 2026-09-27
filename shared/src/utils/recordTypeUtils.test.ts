@@ -79,12 +79,12 @@ describe("getLeaveBalanceField", () => {
     assert.equal(getLeaveBalanceField("VACATION"), "vacationBalance");
   });
 
-  it("maps HOLIDAY to vacationBalance", () => {
-    assert.equal(getLeaveBalanceField("HOLIDAY"), "vacationBalance");
+  it("maps HOLIDAY to null (company-paid, no balance debited)", () => {
+    assert.equal(getLeaveBalanceField("HOLIDAY"), null);
   });
 
-  it("maps HOLIDAY_EVE to vacationBalance", () => {
-    assert.equal(getLeaveBalanceField("HOLIDAY_EVE"), "vacationBalance");
+  it("maps HOLIDAY_EVE to null (company-paid, no balance debited)", () => {
+    assert.equal(getLeaveBalanceField("HOLIDAY_EVE"), null);
   });
 
   it("maps SICK to sickBalance", () => {
