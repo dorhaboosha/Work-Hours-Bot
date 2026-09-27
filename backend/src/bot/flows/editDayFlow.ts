@@ -199,11 +199,13 @@ export async function handleEditStep(
       const { ddMm, absenceType } = session.data;
       if (!ddMm || !absenceType) { SessionStore.clear(userId); return; }
 
-      const debitDays = PORTION_DEBIT_DAYS[text];
-      if (debitDays === undefined) {
+      // Own-key check so inherited names ("constructor", "__proto__", …) are
+      // rejected rather than resolving to Object.prototype members.
+      if (!Object.hasOwn(PORTION_DEBIT_DAYS, text)) {
         await ctx.reply(t("edit.invalidPortion"), { parse_mode: "Markdown" });
         return;
       }
+      const debitDays = PORTION_DEBIT_DAYS[text];
 
       SessionStore.clear(userId);
       try {
