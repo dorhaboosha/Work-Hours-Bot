@@ -11,6 +11,9 @@ model UserSettings {
   id                   String   @id @default(uuid())
   telegramId           String   @unique @map("telegram_id")
   dailyRequiredMinutes Int      @map("daily_required_minutes")
+  // Required minutes on Chol HaMoed days (Sukkot/Pesach). null = same as
+  // dailyRequiredMinutes.
+  cholHamoedRequiredMinutes Int? @map("chol_hamoed_required_minutes")
   timezone             String
   workdays             Int[]
 

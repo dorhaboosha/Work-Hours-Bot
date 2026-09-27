@@ -333,6 +333,32 @@ describe("SettingsService", async () => {
       assert.equal("vacationAccrualRate" in data, false);
     });
 
+    it("passes cholHamoedRequiredMinutes through to updateUserSettings", async () => {
+      mockFind.mock.mockImplementationOnce(async () => EXISTING);
+
+      await updateSettings("user1", { cholHamoedRequiredMinutes: 420 });
+
+      assert.equal(mockUpdate.mock.calls[0].arguments[1].cholHamoedRequiredMinutes, 420);
+    });
+
+    it("passes cholHamoedRequiredMinutes: null through, clearing the override", async () => {
+      mockFind.mock.mockImplementationOnce(async () => EXISTING);
+
+      await updateSettings("user1", { cholHamoedRequiredMinutes: null });
+
+      const data = mockUpdate.mock.calls[0].arguments[1];
+      assert.equal("cholHamoedRequiredMinutes" in data, true);
+      assert.equal(data.cholHamoedRequiredMinutes, null);
+    });
+
+    it("leaves cholHamoedRequiredMinutes out when it isn't provided", async () => {
+      mockFind.mock.mockImplementationOnce(async () => EXISTING);
+
+      await updateSettings("user1", { dailyRequiredMinutes: 500 });
+
+      assert.equal("cholHamoedRequiredMinutes" in mockUpdate.mock.calls[0].arguments[1], false);
+    });
+
     it("throws USER_SETTINGS_NOT_FOUND when the user has no settings", async () => {
       mockFind.mock.mockImplementationOnce(async () => null);
 

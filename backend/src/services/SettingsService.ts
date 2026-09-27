@@ -87,6 +87,8 @@ export async function setupSettings(
 
 export interface UpdateSettingsInput {
   dailyRequiredMinutes?: number;
+  /** Required minutes on Chol HaMoed days. null clears it (= same as dailyRequiredMinutes). */
+  cholHamoedRequiredMinutes?: number | null;
   timezone?: string;
   workdays?: Weekday[];
   vacationAccrualRate?: number;
@@ -114,6 +116,9 @@ export async function updateSettings(
   const data: UpdateUserSettingsData = {
     ...(input.dailyRequiredMinutes !== undefined && {
       dailyRequiredMinutes: input.dailyRequiredMinutes,
+    }),
+    ...(input.cholHamoedRequiredMinutes !== undefined && {
+      cholHamoedRequiredMinutes: input.cholHamoedRequiredMinutes,
     }),
     ...(input.timezone !== undefined && { timezone: input.timezone }),
     ...(input.workdays !== undefined && { workdays: input.workdays }),
