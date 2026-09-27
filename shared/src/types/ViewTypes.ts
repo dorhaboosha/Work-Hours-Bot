@@ -1,4 +1,5 @@
 import type {
+  AbsencePortion,
   DailyRecord,
   DailyRecordId,
   DailyRecordType,
@@ -75,11 +76,13 @@ export interface EditWorkdayResult {
   /** dd-mm */
   displayDate: string;
   recordType: DailyRecordType;
-  /** UTC timestamp. null for absence records */
+  /** How much of the day the absence covers. null for WORK records. */
+  absencePortion: AbsencePortion | null;
+  /** UTC timestamp. null for full-day absence records */
   startTime?: string | null;
-  /** UTC timestamp. null for absence records */
+  /** UTC timestamp. null for full-day absence records */
   expectedEndTime?: string | null;
-  /** UTC timestamp. null for absence records */
+  /** UTC timestamp. null for full-day absence records */
   endTime?: string | null;
   /** Actual worked minutes, integer >= 0 */
   workedMinutes: number;

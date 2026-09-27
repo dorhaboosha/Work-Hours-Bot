@@ -94,7 +94,11 @@ export type EditRecordState =
   | "OPEN_WORK_RECORD"
   | "NO_RECORD"
   | "CLOSED_WORK_RECORD"
-  | "ABSENCE_RECORD";
+  | "ABSENCE_RECORD"
+  /** Half-day absence with no open work session (hours may or may not be logged). */
+  | "HALF_DAY_RECORD"
+  /** Half-day absence with an open work session (started, not ended). */
+  | "HALF_DAY_OPEN_RECORD";
 
 /** The state of a date returned by the read-only /record dd-mm lookup */
 export type RecordLookupState =
@@ -107,6 +111,8 @@ export type RecordLookupState =
 export type EditAction =
   | "SET_END_HOUR"
   | "SET_START_AND_END_HOURS"
+  /** Set the worked hours on a half-day absence, keeping the absence. */
+  | "LOG_HOURS"
   | "MARK_ABSENCE"
   | "CANCEL";
 

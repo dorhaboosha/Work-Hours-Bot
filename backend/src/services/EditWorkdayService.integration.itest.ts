@@ -13,7 +13,7 @@
  */
 import { describe, it, before } from "node:test";
 import assert from "node:assert/strict";
-import { markAbsence, setStartAndEndHours } from "@/services/EditWorkdayService";
+import { markAbsence, setHoursOnHalfDay, setStartAndEndHours } from "@/services/EditWorkdayService";
 import { prisma } from "@/config/PrismaClient";
 import { AppError } from "@/utils/AppError";
 import {
@@ -133,6 +133,45 @@ describe("EditWorkdayService — leave balance refund/debit transactions (integr
       const liveSettings = await prisma.userSettings.findUniqueOrThrow({ where: { telegramId } });
       assert.equal(liveSettings.vacationBalance, 10);
       assert.equal(liveSettings.sickBalance, 10);
+    } finally {
+      await cleanupTestUser(telegramId);
+    }
+  });
+
+  it("keeps a half day's absence and debit while hours are logged, then refunds when turned into a work day", async () => {
+    const settings = await createTestSettings({ vacationBalance: 10, sickBalance: 10 });
+    const telegramId = settings.telegramId;
+
+    try {
+      // ½ vacation day: 0.5 debited, half a day credited.
+      await markAbsence(telegramId, DATE, "VACATION", "HALF");
+
+      // Log the worked half — the absence and its debit must survive.
+      const logged = await setHoursOnHalfDay(telegramId, DATE, "13:00", "17:00");
+      assert.equal(logged.workedMinutes, 240);
+      assert.equal(logged.creditedMinutes, 240);
+      assert.equal(logged.balanceMinutes, 0); // 240 + 240 - 480
+
+      let row = await prisma.dailyRecord.findFirst({ where: { telegramId } });
+      assert.equal(row?.recordType, "VACATION");
+      assert.equal(row?.absencePortion, "HALF");
+      assert.equal(row?.debitedLeaveDays, 0.5);
+      assert.equal(row?.workedMinutes, 240);
+
+      let liveSettings = await prisma.userSettings.findUniqueOrThrow({ where: { telegramId } });
+      assert.equal(liveSettings.vacationBalance, 9.5);
+
+      // Turn it into a regular work day — the 0.5 must come back.
+      await setStartAndEndHours(telegramId, DATE, "09:00", "17:00");
+
+      row = await prisma.dailyRecord.findFirst({ where: { telegramId } });
+      assert.equal(row?.recordType, "WORK");
+      assert.equal(row?.absencePortion, null);
+      assert.equal(row?.creditedMinutes, 0);
+      assert.equal(row?.debitedLeaveDays, null);
+
+      liveSettings = await prisma.userSettings.findUniqueOrThrow({ where: { telegramId } });
+      assert.equal(liveSettings.vacationBalance, 10);
     } finally {
       await cleanupTestUser(telegramId);
     }

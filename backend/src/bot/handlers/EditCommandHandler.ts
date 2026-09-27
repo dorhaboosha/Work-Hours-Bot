@@ -23,6 +23,12 @@ export async function handleEdit(ctx: Context): Promise<void> {
     const ddMm = args[0];
     const options = await getEditDayOptions(telegramId, ddMm);
 
+    const recType = options.record?.recordType as DailyRecordType | undefined;
+    const absenceLabel =
+      recType && isAbsenceRecordType(recType)
+        ? t(`absenceType.${recType as AbsenceRecordType}`)
+        : recType ?? "absence";
+
     let prompt: string;
     switch (options.state) {
       case "OPEN_WORK_RECORD":
@@ -34,15 +40,15 @@ export async function handleEdit(ctx: Context): Promise<void> {
       case "CLOSED_WORK_RECORD":
         prompt = t("edit.closedRecord", { date: ddMm });
         break;
-      case "ABSENCE_RECORD": {
-        const recType = options.record?.recordType as DailyRecordType | undefined;
-        const absenceLabel =
-          recType && isAbsenceRecordType(recType)
-            ? t(`absenceType.${recType as AbsenceRecordType}`)
-            : recType ?? "absence";
+      case "ABSENCE_RECORD":
         prompt = t("edit.absenceRecord", { date: ddMm, absenceLabel });
         break;
-      }
+      case "HALF_DAY_RECORD":
+        prompt = t("edit.halfDayRecord", { date: ddMm, absenceLabel });
+        break;
+      case "HALF_DAY_OPEN_RECORD":
+        prompt = t("edit.halfDayOpenRecord", { date: ddMm, absenceLabel });
+        break;
     }
 
     await startEditFlow(ctx, telegramId, ddMm, options.state, prompt);

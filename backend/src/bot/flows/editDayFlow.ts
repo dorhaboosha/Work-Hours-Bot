@@ -2,7 +2,7 @@ import type { Context } from "telegraf";
 import { SessionStore } from "@/bot/session/SessionStore";
 import type { Session } from "@/bot/session/SessionStore";
 import { getSettingsOrThrow } from "@/services/SettingsService";
-import { setEndHour, setStartAndEndHours, markAbsence } from "@/services/EditWorkdayService";
+import { setEndHour, setStartAndEndHours, setHoursOnHalfDay, markAbsence } from "@/services/EditWorkdayService";
 import {
   formatTime,
   formatMinutesAsDuration,
@@ -90,6 +90,14 @@ export async function handleEditStep(
       } else if (action === "SET_START_AND_END") {
         SessionStore.set(userId, { step: "edit:set_start_end", data: { ddMm } });
         await ctx.reply(t("edit.promptStartAndEndHours"), { parse_mode: "Markdown" });
+      } else if (action === "CONVERT_TO_WORK") {
+        // Same step as SET_START_AND_END: replacing the half day with a work
+        // day is exactly what setStartAndEndHours does (refunding any debit).
+        SessionStore.set(userId, { step: "edit:set_start_end", data: { ddMm } });
+        await ctx.reply(t("edit.promptConvertToWork"), { parse_mode: "Markdown" });
+      } else if (action === "LOG_HOURS") {
+        SessionStore.set(userId, { step: "edit:log_hours", data: { ddMm } });
+        await ctx.reply(t("edit.promptLogHours"), { parse_mode: "Markdown" });
       } else if (action === "MARK_ABSENCE") {
         SessionStore.set(userId, { step: "edit:choose_absence", data: { ddMm } });
         await ctx.reply(t("edit.absenceTypeList"), { parse_mode: "Markdown" });
@@ -156,6 +164,40 @@ export async function handleEditStep(
       break;
     }
 
+    case "edit:log_hours": {
+      const { ddMm } = session.data;
+      if (!ddMm) { SessionStore.clear(userId); return; }
+
+      const match = HH_MM_RANGE_RE.exec(text);
+      if (!match) {
+        await ctx.reply(t("edit.invalidPromptLogHours"), { parse_mode: "Markdown" });
+        return;
+      }
+
+      const [, startHhMm, endHhMm] = match;
+      SessionStore.clear(userId);
+      try {
+        const settings = await getSettingsOrThrow(userId);
+        const result = await setHoursOnHalfDay(userId, ddMm, startHhMm, endHhMm);
+
+        await ctx.reply(
+          t("edit.halfDayHoursSaved", {
+            date: ddMm,
+            absenceLabel: t(`absenceType.${result.recordType}`),
+            creditedStr: formatMinutesAsDuration(result.creditedMinutes),
+            startStr: formatTime(result.startTime!, settings.timezone),
+            endStr: formatTime(result.endTime!, settings.timezone),
+            workedStr: formatMinutesAsDuration(result.workedMinutes),
+            balanceStr: formatBalance(result.balanceMinutes),
+          }),
+          { parse_mode: "Markdown" }
+        );
+      } catch (err) {
+        await handleBotError(ctx, err);
+      }
+      break;
+    }
+
     case "edit:choose_absence": {
       const { ddMm } = session.data;
       if (!ddMm) { SessionStore.clear(userId); return; }
@@ -187,7 +229,7 @@ export async function handleEditStep(
         const message = appendLeaveAdjustmentLines(
           t("edit.absenceSaved", { date: ddMm, absenceLabel, creditedStr, balanceStr }),
           result
-        );
+        ) + (result.absencePortion === "HALF" ? t("edit.halfDayHint", { date: ddMm }) : "");
         await ctx.reply(message, { parse_mode: "Markdown" });
       } catch (err) {
         await handleBotError(ctx, err);
@@ -222,7 +264,7 @@ export async function handleEditStep(
         const message = appendLeaveAdjustmentLines(
           t("edit.absenceSaved", { date: ddMm, absenceLabel, creditedStr, balanceStr }),
           result
-        );
+        ) + (result.absencePortion === "HALF" ? t("edit.halfDayHint", { date: ddMm }) : "");
         await ctx.reply(message, { parse_mode: "Markdown" });
       } catch (err) {
         await handleBotError(ctx, err);
