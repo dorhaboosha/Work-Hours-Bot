@@ -68,6 +68,15 @@ export type AbsenceRecordType =
   | "UNPAID_ABSENCE"
   | "ELECTION";
 
+/**
+ * How much of the day an absence record covers.
+ * - FULL: the absence covers the whole day; no work hours can be logged on it.
+ * - HALF: the absence covers half the day; the other half can be logged as work hours.
+ * For HOLIDAY_EVE the company always covers half: FULL means the other half
+ * was taken as vacation, HALF means the other half was (or will be) worked.
+ */
+export type AbsencePortion = "FULL" | "HALF";
+
 export const DAILY_RECORD_TYPE_LABELS: Record<DailyRecordType, string> = {
   WORK: "Work",
   SICK: "Sick day",
