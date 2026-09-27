@@ -14,6 +14,7 @@ interface AggregateResult {
   workdaysCount: number;
   requiredMinutes: number;
   workedMinutes: number;
+  creditedMinutes: number;
   balanceMinutes: number;
 }
 
@@ -22,14 +23,15 @@ interface AggregateResult {
  * absence type correctly per §3.10 of the spec:
  *
  * - **Required minutes** = number of configured workdays × `dailyRequiredMinutes` (always full).
- * - **WORK record (closed)** → stored `workedMinutes` contributed to worked.
- * - **WORK record (open)**   → caller pre-fills `workedMinutes` with live value via `enrichWithOpenDay`.
- * - **Absence record**       → credited minutes (stored by `MARK_ABSENCE`) contributed to worked:
- *   SICK/VACATION/HOLIDAY/ELECTION → full day; HOLIDAY_EVE → half day; UNPAID_ABSENCE → 0.
- * - **No record**            → 0 worked, full required (missing day).
+ * - **Each record** contributes its actual `workedMinutes` to worked and its
+ *   `creditedMinutes` (snapshotted by `MARK_ABSENCE`, see resolveAbsenceTerms)
+ *   to credited. A half-day absence can contribute to both.
+ * - **Open session**         → caller pre-fills `workedMinutes` with live value via `enrichWithOpenDay`.
+ * - **No record**            → 0 worked, 0 credited, full required (missing day).
  *
- * Because required is always full, HOLIDAY_EVE and UNPAID_ABSENCE produce negative balances,
- * matching the single-day edit result and the spec formula.
+ * balance = worked + credited − required. Because required is always full,
+ * a half-day credit with no logged hours and UNPAID_ABSENCE produce negative
+ * balances, matching the single-day edit result and the spec formula.
  */
 export function aggregateSummary(
   workdayDates: string[],
@@ -44,22 +46,20 @@ export function aggregateSummary(
   }
 
   let workedMinutes = 0;
+  let creditedMinutes = 0;
 
   for (const date of workdayDates) {
     const rec = byDate.get(date);
-    // All record types (WORK, absence, missing) contribute stored/credited workedMinutes.
-    // SICK/VACATION/HOLIDAY/ELECTION store full day → balance 0.
-    // HOLIDAY_EVE stores half day → balance = -half.
-    // UNPAID_ABSENCE stores 0 → balance = -full.
-    // WORK stores actual minutes; missing days contribute 0.
+    // Missing days contribute 0 to both.
     workedMinutes += rec?.workedMinutes ?? 0;
+    creditedMinutes += rec?.creditedMinutes ?? 0;
   }
 
   const workdaysCount = workdayDates.length;
   const requiredMinutes = workdaysCount * dailyRequiredMinutes;
-  const balanceMinutes = workedMinutes - requiredMinutes;
+  const balanceMinutes = workedMinutes + creditedMinutes - requiredMinutes;
 
-  return { workdaysCount, requiredMinutes, workedMinutes, balanceMinutes };
+  return { workdaysCount, requiredMinutes, workedMinutes, creditedMinutes, balanceMinutes };
 }
 
 // ── Guards ────────────────────────────────────────────────────────────────────
@@ -120,6 +120,7 @@ interface SummaryCore {
   workdaysCount: number;
   requiredMinutes: number;
   workedMinutes: number;
+  creditedMinutes: number;
   balanceMinutes: number;
 }
 
@@ -168,9 +169,9 @@ async function buildSummary<W extends { workdayDates: string[] }>(
  * Throws PREVIOUS_RECORD_STILL_OPEN if a prior-day record is still open.
  */
 export async function getWeekSummary(telegramId: string): Promise<WorkSummary> {
-  const { startDate, endDate, workdaysCount, requiredMinutes, workedMinutes, balanceMinutes } =
+  const { startDate, endDate, workdaysCount, requiredMinutes, workedMinutes, creditedMinutes, balanceMinutes } =
     await buildSummary(telegramId, getWeekWindow);
-  return { period: "week", startDate, endDate, workdaysCount, requiredMinutes, workedMinutes, balanceMinutes };
+  return { period: "week", startDate, endDate, workdaysCount, requiredMinutes, workedMinutes, creditedMinutes, balanceMinutes };
 }
 
 /**
@@ -178,7 +179,7 @@ export async function getWeekSummary(telegramId: string): Promise<WorkSummary> {
  * Throws PREVIOUS_RECORD_STILL_OPEN if a prior-day record is still open.
  */
 export async function getMonthSummary(telegramId: string): Promise<WorkSummary> {
-  const { month, workdaysCount, requiredMinutes, workedMinutes, balanceMinutes } =
+  const { month, workdaysCount, requiredMinutes, workedMinutes, creditedMinutes, balanceMinutes } =
     await buildSummary(telegramId, getMonthWindow);
-  return { period: "month", month, workdaysCount, requiredMinutes, workedMinutes, balanceMinutes };
+  return { period: "month", month, workdaysCount, requiredMinutes, workedMinutes, creditedMinutes, balanceMinutes };
 }

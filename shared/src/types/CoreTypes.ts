@@ -68,6 +68,15 @@ export type AbsenceRecordType =
   | "UNPAID_ABSENCE"
   | "ELECTION";
 
+/**
+ * How much of the day an absence record covers.
+ * - FULL: the absence covers the whole day; no work hours can be logged on it.
+ * - HALF: the absence covers half the day; the other half can be logged as work hours.
+ * For HOLIDAY_EVE the company always covers half: FULL means the other half
+ * was taken as vacation, HALF means the other half was (or will be) worked.
+ */
+export type AbsencePortion = "FULL" | "HALF";
+
 export const DAILY_RECORD_TYPE_LABELS: Record<DailyRecordType, string> = {
   WORK: "Work",
   SICK: "Sick day",
@@ -109,14 +118,18 @@ export interface DailyRecord {
   /** Local work date in user's timezone. Format: YYYY-MM-DD */
   workDate: string;
   recordType: DailyRecordType;
+  /** How much of the day the absence covers. null for WORK records. */
+  absencePortion?: AbsencePortion | null;
   /** UTC timestamp. null for absence records */
   startTime?: string | null;
   /** UTC timestamp. null for absence records */
   expectedEndTime?: string | null;
   /** UTC timestamp. null while a WORK record is active, or for absence records */
   endTime?: string | null;
-  /** Integer >= 0. null only while a WORK record is active */
+  /** Actual worked minutes, integer >= 0. 0 for full-day absences; null only while a work session is active */
   workedMinutes?: number | null;
+  /** Minutes credited by the absence (leave or company-paid time). 0 for WORK records. */
+  creditedMinutes?: number;
   /** Which leave balance this record currently debits, if any. null for WORK and non-debitable absence types. */
   debitedLeaveField?: "vacationBalance" | "sickBalance" | null;
   /** The amount debited for this record, if any. null when debitedLeaveField is null. */

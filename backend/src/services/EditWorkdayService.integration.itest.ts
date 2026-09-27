@@ -33,61 +33,67 @@ describe("EditWorkdayService — leave balance refund/debit transactions (integr
     const telegramId = settings.telegramId;
 
     try {
-      // 1. Mark VACATION, debiting 2 days.
-      const marked1 = await markAbsence(telegramId, DATE, "VACATION", 2);
+      // 1. Mark a full VACATION day, debiting 1 day.
+      const marked1 = await markAbsence(telegramId, DATE, "VACATION", "FULL");
       assert.deepEqual(marked1.leaveDebit, {
         field: "vacationBalance",
-        amount: 2,
-        newBalance: 8,
+        amount: 1,
+        newBalance: 9,
       });
       assert.equal(marked1.leaveRefund, null);
 
       let row = await prisma.dailyRecord.findFirst({ where: { telegramId } });
       assert.equal(row?.recordType, "VACATION");
+      assert.equal(row?.absencePortion, "FULL");
       assert.equal(row?.debitedLeaveField, "vacationBalance");
-      assert.equal(row?.debitedLeaveDays, 2);
-      assert.equal(row?.workedMinutes, 480);
+      assert.equal(row?.debitedLeaveDays, 1);
+      assert.equal(row?.creditedMinutes, 480);
+      assert.equal(row?.workedMinutes, 0);
 
       let liveSettings = await prisma.userSettings.findUniqueOrThrow({ where: { telegramId } });
-      assert.equal(liveSettings.vacationBalance, 8);
+      assert.equal(liveSettings.vacationBalance, 9);
       assert.equal(liveSettings.sickBalance, 8);
 
-      // 2. Re-mark the same date as SICK, debiting 1 day — must refund the
+      // 2. Re-mark the same date as a half SICK day — must refund the
       // vacation debit and apply the new sick debit in one transaction.
-      const marked2 = await markAbsence(telegramId, DATE, "SICK", 1);
+      const marked2 = await markAbsence(telegramId, DATE, "SICK", "HALF");
       assert.deepEqual(marked2.leaveRefund, {
         field: "vacationBalance",
-        amount: 2,
+        amount: 1,
         newBalance: 10,
       });
       assert.deepEqual(marked2.leaveDebit, {
         field: "sickBalance",
-        amount: 1,
-        newBalance: 7,
+        amount: 0.5,
+        newBalance: 7.5,
       });
 
       row = await prisma.dailyRecord.findFirst({ where: { telegramId } });
       assert.equal(row?.recordType, "SICK");
+      assert.equal(row?.absencePortion, "HALF");
       assert.equal(row?.debitedLeaveField, "sickBalance");
-      assert.equal(row?.debitedLeaveDays, 1);
+      assert.equal(row?.debitedLeaveDays, 0.5);
+      assert.equal(row?.creditedMinutes, 240);
 
       liveSettings = await prisma.userSettings.findUniqueOrThrow({ where: { telegramId } });
       assert.equal(liveSettings.vacationBalance, 10);
-      assert.equal(liveSettings.sickBalance, 7);
+      assert.equal(liveSettings.sickBalance, 7.5);
 
       // 3. Convert the same date to actual worked hours — must refund the
-      // sick debit and leave the record with no debit at all.
+      // sick debit and leave the record with no debit or credit at all.
       const worked = await setStartAndEndHours(telegramId, DATE, "09:00", "17:00");
       assert.deepEqual(worked.leaveRefund, {
         field: "sickBalance",
-        amount: 1,
+        amount: 0.5,
         newBalance: 8,
       });
 
       row = await prisma.dailyRecord.findFirst({ where: { telegramId } });
       assert.equal(row?.recordType, "WORK");
+      assert.equal(row?.absencePortion, null);
       assert.equal(row?.debitedLeaveField, null);
       assert.equal(row?.debitedLeaveDays, null);
+      assert.equal(row?.creditedMinutes, 0);
       assert.equal(row?.workedMinutes, 480);
 
       // 4. End-to-end correctness: after debit -> refund -> debit -> refund,
@@ -106,14 +112,14 @@ describe("EditWorkdayService — leave balance refund/debit transactions (integr
     const telegramId = settings.telegramId;
 
     try {
-      await markAbsence(telegramId, DATE, "VACATION", 3);
+      await markAbsence(telegramId, DATE, "VACATION", "FULL");
 
       // ELECTION debits nothing — the previous VACATION debit must still be refunded.
       const marked = await markAbsence(telegramId, DATE, "ELECTION");
       assert.equal(marked.leaveDebit, null);
       assert.deepEqual(marked.leaveRefund, {
         field: "vacationBalance",
-        amount: 3,
+        amount: 1,
         newBalance: 10,
       });
 
@@ -121,7 +127,8 @@ describe("EditWorkdayService — leave balance refund/debit transactions (integr
       assert.equal(row?.recordType, "ELECTION");
       assert.equal(row?.debitedLeaveField, null);
       assert.equal(row?.debitedLeaveDays, null);
-      assert.equal(row?.workedMinutes, 480); // ELECTION credits a full day
+      assert.equal(row?.creditedMinutes, 480); // ELECTION credits a full day
+      assert.equal(row?.workedMinutes, 0);
 
       const liveSettings = await prisma.userSettings.findUniqueOrThrow({ where: { telegramId } });
       assert.equal(liveSettings.vacationBalance, 10);
@@ -131,7 +138,7 @@ describe("EditWorkdayService — leave balance refund/debit transactions (integr
     }
   });
 
-  it("rejects a debitable absence type without debitDays and writes nothing", async () => {
+  it("rejects VACATION without a portion and writes nothing", async () => {
     const settings = await createTestSettings();
     const telegramId = settings.telegramId;
 

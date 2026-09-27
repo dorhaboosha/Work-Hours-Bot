@@ -119,4 +119,23 @@ describe("DailyRecordRepository.upsertRecordByDate — debit pair invariant", as
     assert.equal(call.update.debitedLeaveField, "sickBalance");
     assert.equal(call.update.debitedLeaveDays, 1.5);
   });
+
+  it("defaults absencePortion to null and creditedMinutes to 0 when omitted", async () => {
+    await upsertRecordByDate(BASE_INPUT, fakeClient);
+    const call = mockUpsert.mock.calls[0].arguments[0];
+    assert.equal(call.update.absencePortion, null);
+    assert.equal(call.update.creditedMinutes, 0);
+    assert.equal(call.create.absencePortion, null);
+    assert.equal(call.create.creditedMinutes, 0);
+  });
+
+  it("writes absencePortion and creditedMinutes when provided", async () => {
+    await upsertRecordByDate(
+      { ...BASE_INPUT, absencePortion: "HALF", creditedMinutes: 240 },
+      fakeClient
+    );
+    const call = mockUpsert.mock.calls[0].arguments[0];
+    assert.equal(call.update.absencePortion, "HALF");
+    assert.equal(call.update.creditedMinutes, 240);
+  });
 });

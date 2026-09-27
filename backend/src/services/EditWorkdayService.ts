@@ -10,8 +10,8 @@ import { calcExpectedEndTime, calcWorkedMinutes, calcBalance } from "@/services/
 import type { DailyRecord as PrismaRecord, UserSettings } from "@/generated/prisma/client";
 import type { DailyRecord } from "@shared/types/CoreTypes";
 import type { EditDayOptions, EditWorkdayResult } from "@shared/types/ViewTypes";
-import type { EditRecordState, EditAction, DailyRecordType, AbsenceRecordType } from "@shared/types/CoreTypes";
-import { calculateCreditedMinutes, getLeaveBalanceField } from "@shared/utils/recordTypeUtils";
+import type { EditRecordState, EditAction, DailyRecordType, AbsenceRecordType, AbsencePortion } from "@shared/types/CoreTypes";
+import { requiresPortionChoice, resolveAbsenceTerms } from "@shared/utils/recordTypeUtils";
 
 /** Derives the EditRecordState from the raw Prisma record. */
 function resolveState(record: PrismaRecord | null): EditRecordState {
@@ -36,10 +36,12 @@ function toSharedRecord(prisma: PrismaRecord, workDateStr: string): DailyRecord 
     telegramId: prisma.telegramId,
     workDate: workDateStr,
     recordType: prisma.recordType as DailyRecordType,
+    absencePortion: prisma.absencePortion,
     startTime: prisma.startTime?.toISOString() ?? null,
     expectedEndTime: prisma.expectedEndTime?.toISOString() ?? null,
     endTime: prisma.endTime?.toISOString() ?? null,
     workedMinutes: prisma.workedMinutes ?? null,
+    creditedMinutes: prisma.creditedMinutes,
     debitedLeaveField: prisma.debitedLeaveField as "vacationBalance" | "sickBalance" | null,
     debitedLeaveDays: prisma.debitedLeaveDays ?? null,
     createdAt: prisma.createdAt.toISOString(),
@@ -99,6 +101,7 @@ function toEditWorkdayResult(
   requiredMinutes: number
 ): EditWorkdayResult {
   const workedMinutes = prisma.workedMinutes ?? 0;
+  const creditedMinutes = prisma.creditedMinutes;
   return {
     id: prisma.id,
     telegramId: prisma.telegramId,
@@ -109,8 +112,9 @@ function toEditWorkdayResult(
     expectedEndTime: prisma.expectedEndTime?.toISOString() ?? null,
     endTime: prisma.endTime?.toISOString() ?? null,
     workedMinutes,
+    creditedMinutes,
     requiredMinutes,
-    balanceMinutes: calcBalance(workedMinutes, requiredMinutes),
+    balanceMinutes: calcBalance(workedMinutes + creditedMinutes, requiredMinutes),
   };
 }
 
@@ -225,11 +229,13 @@ export async function setStartAndEndHours(
     telegramId,
     workDate,
     recordType: "WORK" as const,
+    absencePortion: null,
     startTime: startTimeUtc,
     expectedEndTime: expectedEndTimeUtc,
     endTime: endTimeUtc,
     workedMinutes,
-    // A WORK record never carries a debit — clears whatever the overwritten record had.
+    // A WORK record never carries a credit or a debit — clears whatever the overwritten record had.
+    creditedMinutes: 0,
     debitedLeaveField: null,
     debitedLeaveDays: null,
   };
@@ -269,27 +275,26 @@ export async function setStartAndEndHours(
 
 /**
  * Creates or replaces the record for the edited date as an absence record.
- * All timestamps (startTime, expectedEndTime, endTime) are set to null.
- * workedMinutes is set by the absence credit rule:
- *   - SICK / VACATION / HOLIDAY / ELECTION → dailyRequiredMinutes
- *   - HOLIDAY_EVE                           → floor(dailyRequiredMinutes / 2)
- *   - UNPAID_ABSENCE                        → 0
+ * All timestamps (startTime, expectedEndTime, endTime) are set to null and
+ * workedMinutes to 0. What the absence credits and debits comes from
+ * resolveAbsenceTerms (the single source of truth for the rules):
+ *   - creditedMinutes: full or half of dailyRequiredMinutes (0 for UNPAID_ABSENCE)
+ *   - debit: VACATION/SICK debit 1 or 0.5 day of their balance; HOLIDAY_EVE
+ *     FULL debits 0.5 vacation; other types debit nothing.
+ *
+ * `portion` is required for VACATION and SICK (see requiresPortionChoice).
+ * For other types it's optional: HOLIDAY_EVE defaults to HALF (the company-
+ * paid half only), and HOLIDAY/ELECTION/UNPAID_ABSENCE are always FULL.
+ * Negative balances are always allowed — debiting is never blocked.
  *
  * Allowed in all states (NO_RECORD, OPEN_WORK_RECORD, CLOSED_WORK_RECORD, ABSENCE_RECORD).
  *
- * For debitable absence types (VACATION → vacationBalance, SICK → sickBalance
- * — see getLeaveBalanceField), `debitDays` is required and
- * is subtracted from the corresponding leave balance. This is independent of
- * the credited work-minutes above: the caller chooses the debit amount (any
- * multiple of 0.5), it does not have to match the all-or-half credit rule.
- * Negative balances are always allowed — debiting is never blocked.
- *
- * Throws VALIDATION_ERROR if debitDays is missing/non-positive for a
- * debitable type. Validated before any write, so an invalid debit amount
- * never leaves a saved record without its matching balance change.
+ * Throws VALIDATION_ERROR if portion is missing for VACATION/SICK. Validated
+ * before any write, so an invalid call never leaves a saved record without
+ * its matching balance change.
  *
  * If the date being overwritten already had a debit recorded (from a
- * previous MARK_ABSENCE — different type, different amount, or the same
+ * previous MARK_ABSENCE — different type, different portion, or the same
  * type marked again), that amount is refunded first, atomically with the
  * new debit (if any) and the record upsert — so re-marking a date never
  * stacks debits across multiple balances or amounts for a single day.
@@ -298,13 +303,12 @@ export async function markAbsence(
   telegramId: string,
   ddMm: string,
   absenceType: AbsenceRecordType,
-  debitDays?: number
+  portion?: AbsencePortion
 ): Promise<EditWorkdayResult> {
-  const balanceField = getLeaveBalanceField(absenceType);
-  if (balanceField !== null && (debitDays === undefined || debitDays <= 0)) {
+  if (portion === undefined && requiresPortionChoice(absenceType)) {
     throw new AppError(
       "VALIDATION_ERROR",
-      `debitDays is required and must be a positive number of days for ${absenceType}.`
+      `portion (FULL or HALF) is required for ${absenceType}.`
     );
   }
 
@@ -314,10 +318,16 @@ export async function markAbsence(
   const workDateStr = resolveDdMmToDate(ddMm, settings.timezone);
   const workDate = localDateToUtcMidnight(workDateStr);
 
+  const terms = resolveAbsenceTerms(
+    absenceType,
+    portion ?? (absenceType === "HOLIDAY_EVE" ? "HALF" : "FULL"),
+    settings.dailyRequiredMinutes
+  );
+  const balanceField = terms.debitField;
+  const debitDays = terms.debitDays;
+
   const existingRecord = await findRecordByDate(telegramId, workDate);
   assertActionAllowed(resolveState(existingRecord), "MARK_ABSENCE");
-
-  const workedMinutes = calculateCreditedMinutes(absenceType, settings.dailyRequiredMinutes);
 
   const previousField = (existingRecord?.debitedLeaveField ?? null) as LeaveBalanceField | null;
   const previousDays = existingRecord?.debitedLeaveDays ?? null;
@@ -327,12 +337,14 @@ export async function markAbsence(
     telegramId,
     workDate,
     recordType: absenceType,
+    absencePortion: terms.portion,
     startTime: null,
     expectedEndTime: null,
     endTime: null,
-    workedMinutes,
+    workedMinutes: 0,
+    creditedMinutes: terms.creditedMinutes,
     debitedLeaveField: balanceField,
-    debitedLeaveDays: balanceField !== null ? (debitDays as number) : null,
+    debitedLeaveDays: debitDays,
   };
 
   let saved: PrismaRecord;

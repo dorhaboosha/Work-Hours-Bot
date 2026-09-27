@@ -45,10 +45,13 @@ function makeTodayOpenRecord(startTime = START_1H_AGO) {
     id: "r1",
     telegramId: "user1",
     workDate: TODAY_WORK_DATE,
+    recordType: "WORK",
+    absencePortion: null,
     startTime,
     expectedEndTime: new Date(startTime.getTime() + 480 * 60 * 1000),
     endTime: null,
     workedMinutes: null,
+    creditedMinutes: 0,
     createdAt: new Date(),
     updatedAt: new Date(),
   };
@@ -96,10 +99,13 @@ describe("WorkdayService", async () => {
       id: "r-new",
       telegramId: input["telegramId"],
       workDate: input["workDate"],
+      recordType: "WORK",
+      absencePortion: null,
       startTime: input["startTime"],
       expectedEndTime: input["expectedEndTime"],
       endTime: null,
       workedMinutes: null,
+      creditedMinutes: 0,
       createdAt: new Date(),
       updatedAt: new Date(),
     }));
@@ -108,10 +114,13 @@ describe("WorkdayService", async () => {
         id,
         telegramId: "user1",
         workDate: TODAY_WORK_DATE,
+        recordType: "WORK",
+        absencePortion: null,
         startTime: START_1H_AGO,
         expectedEndTime: new Date(START_1H_AGO.getTime() + 480 * 60 * 1000),
         endTime: input.endTime,
         workedMinutes: input.workedMinutes,
+        creditedMinutes: 0,
         createdAt: new Date(),
         updatedAt: new Date(),
       })
@@ -280,6 +289,21 @@ describe("WorkdayService", async () => {
 
       assert.equal(status.remainingMinutes, 0);
     });
+
+    it("counts credited minutes toward remaining time for an open session on a half-day absence", async () => {
+      // 1h worked so far + 240 credited → 480 - 60 - 240 = 180 remaining
+      mockFindOpenWorkRecord.mock.mockImplementationOnce(async () => ({
+        ...makeTodayOpenRecord(),
+        recordType: "VACATION",
+        absencePortion: "HALF",
+        creditedMinutes: 240,
+      }));
+
+      const status = await getTodayStatus("user1");
+
+      assert.equal(status.creditedMinutes, 240);
+      assert.equal(status.remainingMinutes, 480 - status.workedMinutesSoFar - 240);
+    });
   });
 
   describe("getTodayStatus – guards", () => {
@@ -323,9 +347,27 @@ describe("WorkdayService", async () => {
       assert.equal(result.requiredMinutes, SETTINGS.dailyRequiredMinutes);
       assert.ok(typeof result.workedMinutes === "number");
       assert.ok(result.workedMinutes >= 0);
+      assert.equal(result.creditedMinutes, 0);
       assert.equal(
         result.balanceMinutes,
         result.workedMinutes - result.requiredMinutes
+      );
+    });
+
+    it("includes credited minutes in the balance when closing a session on a half-day absence", async () => {
+      mockFindOpenWorkRecord.mock.mockImplementationOnce(async () => ({
+        ...makeTodayOpenRecord(),
+        recordType: "VACATION",
+        absencePortion: "HALF",
+        creditedMinutes: 240,
+      }));
+
+      const result = await endWorkday("user1");
+
+      assert.equal(result.creditedMinutes, 240);
+      assert.equal(
+        result.balanceMinutes,
+        result.workedMinutes + 240 - result.requiredMinutes
       );
     });
 
@@ -385,6 +427,8 @@ describe("WorkdayService", async () => {
       expectedEndTime: new Date(start.getTime() + 480 * 60_000),
       endTime: new Date("2026-06-12T14:30:00Z"),
       workedMinutes: 510,
+      absencePortion: null,
+      creditedMinutes: 0,
       createdAt: new Date(),
       updatedAt: new Date(),
     };
@@ -401,6 +445,8 @@ describe("WorkdayService", async () => {
       expectedEndTime: new Date(start.getTime() + 480 * 60_000),
       endTime: null,
       workedMinutes: null,
+      absencePortion: null,
+      creditedMinutes: 0,
       createdAt: new Date(),
       updatedAt: new Date(),
     };
@@ -412,10 +458,12 @@ describe("WorkdayService", async () => {
       telegramId: "user1",
       workDate: PREV_WORK_DATE,
       recordType: "VACATION",
+      absencePortion: "FULL",
       startTime: null,
       expectedEndTime: null,
       endTime: null,
-      workedMinutes: SETTINGS.dailyRequiredMinutes,
+      workedMinutes: 0,
+      creditedMinutes: SETTINGS.dailyRequiredMinutes,
       createdAt: new Date(),
       updatedAt: new Date(),
     };
@@ -484,7 +532,9 @@ describe("WorkdayService", async () => {
       assert.equal(result.state, "ABSENCE_RECORD");
       assert.ok(result.record !== null);
       assert.equal(result.record.recordType, "VACATION");
-      assert.equal(result.record.workedMinutes, SETTINGS.dailyRequiredMinutes);
+      assert.equal(result.record.absencePortion, "FULL");
+      assert.equal(result.record.creditedMinutes, SETTINGS.dailyRequiredMinutes);
+      assert.equal(result.record.workedMinutes, 0);
     });
 
     it("returns state=NO_RECORD with record=null when no record exists", async () => {

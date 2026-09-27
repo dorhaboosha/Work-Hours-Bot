@@ -1,6 +1,6 @@
 import { prisma } from "@/config/PrismaClient";
 import type { PrismaClientOrTx } from "@/config/PrismaClient";
-import type { DailyRecord, DailyRecordType } from "@/generated/prisma/client";
+import type { AbsencePortion, DailyRecord, DailyRecordType } from "@/generated/prisma/client";
 import type { LeaveBalanceField } from "@/repositories/UserSettingsRepository";
 
 export interface CreateDailyRecordInput {
@@ -15,10 +15,12 @@ export interface CreateDailyRecordInput {
 /** Flexible update: only supplied fields are written; omitted fields are untouched. */
 export interface UpdateDailyRecordInput {
   recordType?: DailyRecordType;
+  absencePortion?: AbsencePortion | null;
   startTime?: Date | null;
   expectedEndTime?: Date | null;
   endTime?: Date | null;
   workedMinutes?: number | null;
+  creditedMinutes?: number;
 }
 
 /** Full upsert payload for create-or-replace on a specific date (edit flow). */
@@ -26,25 +28,30 @@ export interface UpsertDailyRecordInput {
   telegramId: string;
   workDate: Date;
   recordType: DailyRecordType;
+  /** null/omitted for WORK records. */
+  absencePortion?: AbsencePortion | null;
   startTime?: Date | null;
   expectedEndTime?: Date | null;
   endTime?: Date | null;
   workedMinutes?: number | null;
+  /** Minutes credited by the absence; omitted = 0. */
+  creditedMinutes?: number;
   /** Which leave balance (if any) this record currently debits — used to refund it correctly on a later edit. */
   debitedLeaveField?: LeaveBalanceField | null;
   debitedLeaveDays?: number | null;
 }
 
 /**
- * Returns the user's open WORK record (recordType=WORK, endTime IS NULL).
- * Absence records always have endTime=null too, so this filter is required
- * to enforce the single open WORK record invariant correctly.
+ * Returns the user's open work session: a record that has a startTime but no
+ * endTime. Usually a WORK record, but a half-day absence can hold one too.
+ * Filters on startTime rather than recordType because full-day absence
+ * records also have endTime=null (and no startTime).
  */
 export async function findOpenWorkRecord(
   telegramId: string
 ): Promise<DailyRecord | null> {
   return prisma.dailyRecord.findFirst({
-    where: { telegramId, recordType: "WORK", endTime: null },
+    where: { telegramId, startTime: { not: null }, endTime: null },
     orderBy: { workDate: "desc" },
   });
 }
@@ -107,10 +114,12 @@ export async function upsertRecordByDate(
     telegramId,
     workDate,
     recordType,
+    absencePortion,
     startTime,
     expectedEndTime,
     endTime,
     workedMinutes,
+    creditedMinutes,
     debitedLeaveField,
     debitedLeaveDays,
   } = input;
@@ -125,10 +134,12 @@ export async function upsertRecordByDate(
 
   const payload = {
     recordType,
+    absencePortion: absencePortion ?? null,
     startTime: startTime ?? null,
     expectedEndTime: expectedEndTime ?? null,
     endTime: endTime ?? null,
     workedMinutes: workedMinutes ?? null,
+    creditedMinutes: creditedMinutes ?? 0,
     debitedLeaveField: debitedLeaveField ?? null,
     debitedLeaveDays: debitedLeaveDays ?? null,
   };

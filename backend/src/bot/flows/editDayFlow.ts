@@ -15,12 +15,12 @@ import { handleBotError } from "@/bot/utils/handleBotError";
 import { HH_MM_RE, HH_MM_RANGE_RE } from "@/constants/timeFormats";
 import { ABSENCE_TYPES } from "@/constants/absenceTypes";
 import { EDIT_ACTION_MAP } from "@/constants/editActions";
-import { getLeaveBalanceField } from "@shared/utils/recordTypeUtils";
-import type { AbsenceRecordType } from "@shared/types/CoreTypes";
+import { requiresPortionChoice } from "@shared/utils/recordTypeUtils";
+import type { AbsencePortion, AbsenceRecordType } from "@shared/types/CoreTypes";
 import type { EditWorkdayResult } from "@shared/types/ViewTypes";
 
-/** Maps the full/half day menu choice to the number of leave days debited. */
-const PORTION_DEBIT_DAYS: Record<string, number> = { "1": 1, "2": 0.5 };
+/** Maps the full/half day menu choice to the absence portion. */
+const PORTION_CHOICES: Record<string, AbsencePortion> = { "1": "FULL", "2": "HALF" };
 
 /**
  * Appends an optional refund line and/or an optional debit line to a base
@@ -168,8 +168,8 @@ export async function handleEditStep(
 
       const absenceType = ABSENCE_TYPES[idx - 1];
 
-      if (getLeaveBalanceField(absenceType) !== null) {
-        // Debitable type — ask whether it was a full or half day before saving.
+      if (requiresPortionChoice(absenceType)) {
+        // Ask whether it was a full or half day before saving.
         const absenceLabel = t(`absenceType.${absenceType}`);
         SessionStore.set(userId, { step: "edit:choose_portion", data: { ddMm, absenceType } });
         await ctx.reply(t("edit.promptPortion", { absenceLabel }), { parse_mode: "Markdown" });
@@ -181,7 +181,7 @@ export async function handleEditStep(
         await getSettingsOrThrow(userId);
         const result = await markAbsence(userId, ddMm, absenceType);
         const absenceLabel = t(`absenceType.${absenceType}`);
-        const creditedStr = formatMinutesAsDuration(result.workedMinutes);
+        const creditedStr = formatMinutesAsDuration(result.creditedMinutes + result.workedMinutes);
         const balanceStr = formatBalance(result.balanceMinutes);
 
         const message = appendLeaveAdjustmentLines(
@@ -201,11 +201,11 @@ export async function handleEditStep(
 
       // Own-key check so inherited names ("constructor", "__proto__", …) are
       // rejected rather than resolving to Object.prototype members.
-      if (!Object.hasOwn(PORTION_DEBIT_DAYS, text)) {
+      if (!Object.hasOwn(PORTION_CHOICES, text)) {
         await ctx.reply(t("edit.invalidPortion"), { parse_mode: "Markdown" });
         return;
       }
-      const debitDays = PORTION_DEBIT_DAYS[text];
+      const portion = PORTION_CHOICES[text];
 
       SessionStore.clear(userId);
       try {
@@ -213,10 +213,10 @@ export async function handleEditStep(
           userId,
           ddMm,
           absenceType as AbsenceRecordType,
-          debitDays
+          portion
         );
         const absenceLabel = t(`absenceType.${absenceType}`);
-        const creditedStr = formatMinutesAsDuration(result.workedMinutes);
+        const creditedStr = formatMinutesAsDuration(result.creditedMinutes + result.workedMinutes);
         const balanceStr = formatBalance(result.balanceMinutes);
 
         const message = appendLeaveAdjustmentLines(
