@@ -22,6 +22,11 @@ export async function handleStatus(ctx: Context): Promise<void> {
       status.workedMinutesSoFar + status.creditedMinutes - settings.dailyRequiredMinutes
     );
 
+    const creditedLine =
+      status.creditedMinutes > 0
+        ? t("status.creditedLine", { creditedStr: formatMinutesAsDuration(status.creditedMinutes) })
+        : "";
+
     const goalReached = status.remainingMinutes === 0;
     const hint = t(goalReached ? "status.hintGoalReached" : "status.hint");
 
@@ -31,6 +36,7 @@ export async function handleStatus(ctx: Context): Promise<void> {
         startStr,
         endStr,
         workedStr,
+        creditedLine,
         remainingStr,
         requiredStr,
         balanceStr,

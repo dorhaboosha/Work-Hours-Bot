@@ -448,6 +448,25 @@ describe("SummaryService", async () => {
       const result = await getWeekSummary("u1");
       assert.equal(result.period, "week");
     });
+
+    it("counts the open session's live minutes even when a full-day absence appears earlier in the week", async () => {
+      // Regression: the open-day lookup used to pick the first record with
+      // endTime=null, which is the absence (no startTime), so the open
+      // session's live minutes were dropped.
+      const { workdayDates } = getWeekWindow(SETTINGS.workdays, TIMEZONE);
+      const absenceDate = workdayDates[0];
+      const openDate = workdayDates[workdayDates.length - 1];
+      assert.notEqual(absenceDate, openDate);
+
+      mockListRecords.mock.mockImplementationOnce(async () => [
+        makeAbsenceRecord(absenceDate, "VACATION", DAILY_MIN),
+        makeOpenRecord(openDate), // started 2 h ago
+      ]);
+
+      const result = await getWeekSummary("u1");
+      assert.equal(result.creditedMinutes, DAILY_MIN);
+      assert.ok(result.workedMinutes >= 119, `expected ~120 live minutes, got ${result.workedMinutes}`);
+    });
   });
 
   // ── getMonthSummary ───────────────────────────────────────────────────────────

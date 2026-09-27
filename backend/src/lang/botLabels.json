@@ -17,15 +17,18 @@
     "ELECTION": "Election day"
   },
   "start": {
-    "success": "▶️ *Workday started!*\n\n🕐 Start time:    *{{startStr}}*\n🏁 Expected end:  *{{endStr}}*\n⏱ Required:       *{{durationStr}}*\n\nUse /status to check your progress, or /end when you're done."
+    "success": "▶️ *Workday started!*\n\n🕐 Start time:    *{{startStr}}*\n🏁 Expected end:  *{{endStr}}*\n⏱ Required:       *{{durationStr}}*\n\nUse /status to check your progress, or /end when you're done.",
+    "successHalfDay": "▶️ *Workday started!*\n\n📋 Today is also a *{{absenceLabel}} (half day)*, counted as *{{creditedStr}}*.\n\n🕐 Start time:    *{{startStr}}*\n🏁 Expected end:  *{{endStr}}*\n⏱ Left to work:  *{{durationStr}}*\n\nUse /status to check your progress, or /end when you're done."
   },
   "status": {
-    "active": "📊 *Today's status*\n\n🗓 Date:         *{{workDate}}*\n🕐 Start:        *{{startStr}}*\n🏁 Expected end: *{{endStr}}*\n\n✅ Worked:       *{{workedStr}}* / {{requiredStr}}\n⏳ Remaining:    *{{remainingStr}}*\n⚖️ Balance:      *{{balanceStr}}*\n\n{{hint}}",
+    "active": "📊 *Today's status*\n\n🗓 Date:         *{{workDate}}*\n🕐 Start:        *{{startStr}}*\n🏁 Expected end: *{{endStr}}*\n\n✅ Worked:       *{{workedStr}}* / {{requiredStr}}{{creditedLine}}\n⏳ Remaining:    *{{remainingStr}}*\n⚖️ Balance:      *{{balanceStr}}*\n\n{{hint}}",
+    "creditedLine": "\n📋 Half-day credit: *{{creditedStr}}*",
     "hint": "Use /end to close your workday when you're done, or /edit dd-mm to fix a past date.",
     "hintGoalReached": "🎉 You've reached your daily goal! Use /end when you're done, or /edit dd-mm to fix a past date."
   },
   "end": {
-    "success": "⏹ *Workday ended!*\n\n🗓 Date:       *{{workDate}}*\n🕐 Start:      *{{startStr}}*\n🏁 End:        *{{endStr}}*\n\n✅ Worked:     *{{workedStr}}*\n📋 Required:   *{{requiredStr}}*\n{{balanceEmoji}} Balance:    *{{balanceStr}}*\n\nUse /week or /month to view your summary."
+    "creditedLine": "\n📋 Half-day credit: *{{creditedStr}}*",
+    "success": "⏹ *Workday ended!*\n\n🗓 Date:       *{{workDate}}*\n🕐 Start:      *{{startStr}}*\n🏁 End:        *{{endStr}}*\n\n✅ Worked:     *{{workedStr}}*{{creditedLine}}\n📋 Required:   *{{requiredStr}}*\n{{balanceEmoji}} Balance:    *{{balanceStr}}*\n\nUse /week or /month to view your summary."
   },
   "week": {
     "summary": "📅 *Weekly summary*\n📆 Period: *{{startDate}}* → *{{endDate}}*\n\n📋 Workdays:  *{{workdaysCount}}*\n⏱ Required:  *{{requiredStr}}*\n✅ Worked:    *{{workedStr}}*\n{{balanceEmoji}} Balance:   *{{balanceStr}}*"
@@ -114,6 +117,7 @@
     "userSettingsNotFound": "⚙️ *You haven't configured your account yet.*\n\nRun `/setup` to get started.",
     "dailyRecordAlreadyExists": "⚠️ *You've already started today's workday.*\n\nUse `/status` to check your progress or `/end` when you're done.",
     "activeRecordNotFound": "⚠️ *No active workday found.*\n\nUse `/start` to begin your day, or `/edit dd-mm` to log or fix a past date.",
+    "dayMarkedAsAbsence": "📋 *Today is marked as {{absenceLabel}}.*\n\nThere are no hours to log on a full-day absence. To change it, use `/edit dd-mm` with today's date.",
     "dailyRecordAlreadyClosed": "⚠️ *Today's workday is already closed.*\n\nUse `/status` to review today's record or `/week` to see your weekly summary.",
     "previousRecordStillOpen": "⚠️ *You have an unfinished workday.*\n\n{{message}}\n\n_Use `/edit dd-mm` to fix it, then you can start a new day or view summaries._",
     "setupAlreadyCompleted": "✅ *Setup is already complete.*\n\nUse `/settings` to view your settings or `/settings\\_edit` to change them.",

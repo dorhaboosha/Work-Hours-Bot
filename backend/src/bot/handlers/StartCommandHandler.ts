@@ -4,6 +4,7 @@ import { getSettingsOrThrow } from "@/services/SettingsService";
 import { formatTime, formatMinutesAsDuration } from "@/bot/utils/formatMessage";
 import { handleBotError } from "@/bot/utils/handleBotError";
 import { t } from "@/i18n";
+import { isAbsenceRecordType } from "@shared/utils/recordTypeUtils";
 
 export async function handleStart(ctx: Context): Promise<void> {
   const telegramId = ctx.from?.id?.toString();
@@ -15,12 +16,22 @@ export async function handleStart(ctx: Context): Promise<void> {
 
     const startStr = formatTime(record.startTime!, settings.timezone);
     const endStr = formatTime(record.expectedEndTime!, settings.timezone);
-    const durationStr = formatMinutesAsDuration(settings.dailyRequiredMinutes);
-
-    await ctx.reply(
-      t("start.success", { startStr, endStr, durationStr }),
-      { parse_mode: "Markdown" }
+    const durationStr = formatMinutesAsDuration(
+      Math.max(0, settings.dailyRequiredMinutes - record.creditedMinutes)
     );
+
+    // Session started on a half-day absence (e.g. ½ vacation, holiday eve).
+    const message = isAbsenceRecordType(record.recordType)
+      ? t("start.successHalfDay", {
+          absenceLabel: t(`absenceType.${record.recordType}`),
+          creditedStr: formatMinutesAsDuration(record.creditedMinutes),
+          startStr,
+          endStr,
+          durationStr,
+        })
+      : t("start.success", { startStr, endStr, durationStr });
+
+    await ctx.reply(message, { parse_mode: "Markdown" });
   } catch (err) {
     await handleBotError(ctx, err);
   }
