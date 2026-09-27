@@ -28,6 +28,11 @@ export async function handleBotError(ctx: Context, err: unknown): Promise<void> 
       case "DAILY_RECORD_ALREADY_CLOSED":
         msg = t("errors.dailyRecordAlreadyClosed");
         break;
+      case "DAY_MARKED_AS_ABSENCE":
+        msg = t("errors.dayMarkedAsAbsence", {
+          absenceLabel: t(`absenceType.${String(err.details?.["recordType"])}`),
+        });
+        break;
       case "PREVIOUS_RECORD_STILL_OPEN":
         msg = t("errors.previousRecordStillOpen", { message: escapeMarkdown(err.message) });
         break;

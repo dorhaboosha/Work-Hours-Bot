@@ -101,13 +101,14 @@ function enrichWithOpenDay(
   workdayDates: string[],
   timezone: string
 ): DailyRecord[] {
-  const openRecord = records.find((r) => r.endTime === null);
-  if (openRecord === null || openRecord === undefined) return records;
+  // An open session has a start time and no end time. Full-day absence
+  // records also have endTime=null (but no startTime), so both are checked.
+  const openRecord = records.find((r) => r.startTime !== null && r.endTime === null);
+  if (openRecord === undefined || openRecord.startTime === null) return records;
 
   const openDateStr = utcToLocalDate(openRecord.workDate, timezone);
   if (!workdayDates.includes(openDateStr)) return records;
 
-  if (!openRecord.startTime) return records;
   const liveMinutes = calcWorkedMinutesSoFar(openRecord.startTime);
   return records.map((r) =>
     r.id === openRecord.id ? { ...r, workedMinutes: liveMinutes } : r

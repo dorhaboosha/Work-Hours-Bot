@@ -2,7 +2,7 @@ import type { Context } from "telegraf";
 import { SessionStore } from "@/bot/session/SessionStore";
 import type { Session } from "@/bot/session/SessionStore";
 import { getSettingsOrThrow } from "@/services/SettingsService";
-import { setEndHour, setStartAndEndHours, markAbsence } from "@/services/EditWorkdayService";
+import { setEndHour, setStartAndEndHours, setHoursOnHalfDay, markAbsence } from "@/services/EditWorkdayService";
 import {
   formatTime,
   formatMinutesAsDuration,
@@ -19,7 +19,12 @@ import { requiresPortionChoice } from "@shared/utils/recordTypeUtils";
 import type { AbsencePortion, AbsenceRecordType } from "@shared/types/CoreTypes";
 import type { EditWorkdayResult } from "@shared/types/ViewTypes";
 
-/** Maps the full/half day menu choice to the absence portion. */
+/**
+ * Maps the portion menu choice to the absence portion. Same keys for both menus:
+ * - VACATION / SICK: 1 = full day, 2 = half day.
+ * - HOLIDAY_EVE (company covers half): 1 = other half as ½ vacation day (FULL),
+ *   2 = other half worked (HALF).
+ */
 const PORTION_CHOICES: Record<string, AbsencePortion> = { "1": "FULL", "2": "HALF" };
 
 /**
@@ -90,6 +95,14 @@ export async function handleEditStep(
       } else if (action === "SET_START_AND_END") {
         SessionStore.set(userId, { step: "edit:set_start_end", data: { ddMm } });
         await ctx.reply(t("edit.promptStartAndEndHours"), { parse_mode: "Markdown" });
+      } else if (action === "CONVERT_TO_WORK") {
+        // Same step as SET_START_AND_END: replacing the half day with a work
+        // day is exactly what setStartAndEndHours does (refunding any debit).
+        SessionStore.set(userId, { step: "edit:set_start_end", data: { ddMm } });
+        await ctx.reply(t("edit.promptConvertToWork"), { parse_mode: "Markdown" });
+      } else if (action === "LOG_HOURS") {
+        SessionStore.set(userId, { step: "edit:log_hours", data: { ddMm } });
+        await ctx.reply(t("edit.promptLogHours"), { parse_mode: "Markdown" });
       } else if (action === "MARK_ABSENCE") {
         SessionStore.set(userId, { step: "edit:choose_absence", data: { ddMm } });
         await ctx.reply(t("edit.absenceTypeList"), { parse_mode: "Markdown" });
@@ -156,6 +169,40 @@ export async function handleEditStep(
       break;
     }
 
+    case "edit:log_hours": {
+      const { ddMm } = session.data;
+      if (!ddMm) { SessionStore.clear(userId); return; }
+
+      const match = HH_MM_RANGE_RE.exec(text);
+      if (!match) {
+        await ctx.reply(t("edit.invalidPromptLogHours"), { parse_mode: "Markdown" });
+        return;
+      }
+
+      const [, startHhMm, endHhMm] = match;
+      SessionStore.clear(userId);
+      try {
+        const settings = await getSettingsOrThrow(userId);
+        const result = await setHoursOnHalfDay(userId, ddMm, startHhMm, endHhMm);
+
+        await ctx.reply(
+          t("edit.halfDayHoursSaved", {
+            date: ddMm,
+            absenceLabel: t(`absenceType.${result.recordType}`),
+            creditedStr: formatMinutesAsDuration(result.creditedMinutes),
+            startStr: formatTime(result.startTime!, settings.timezone),
+            endStr: formatTime(result.endTime!, settings.timezone),
+            workedStr: formatMinutesAsDuration(result.workedMinutes),
+            balanceStr: formatBalance(result.balanceMinutes),
+          }),
+          { parse_mode: "Markdown" }
+        );
+      } catch (err) {
+        await handleBotError(ctx, err);
+      }
+      break;
+    }
+
     case "edit:choose_absence": {
       const { ddMm } = session.data;
       if (!ddMm) { SessionStore.clear(userId); return; }
@@ -168,11 +215,16 @@ export async function handleEditStep(
 
       const absenceType = ABSENCE_TYPES[idx - 1];
 
-      if (requiresPortionChoice(absenceType)) {
-        // Ask whether it was a full or half day before saving.
+      if (requiresPortionChoice(absenceType) || absenceType === "HOLIDAY_EVE") {
+        // Ask whether it was a full or half day (or, for a holiday eve, how
+        // the non-company half was covered) before saving.
         const absenceLabel = t(`absenceType.${absenceType}`);
         SessionStore.set(userId, { step: "edit:choose_portion", data: { ddMm, absenceType } });
-        await ctx.reply(t("edit.promptPortion", { absenceLabel }), { parse_mode: "Markdown" });
+        const prompt =
+          absenceType === "HOLIDAY_EVE"
+            ? t("edit.promptEveCoverage")
+            : t("edit.promptPortion", { absenceLabel });
+        await ctx.reply(prompt, { parse_mode: "Markdown" });
         break;
       }
 
@@ -187,7 +239,7 @@ export async function handleEditStep(
         const message = appendLeaveAdjustmentLines(
           t("edit.absenceSaved", { date: ddMm, absenceLabel, creditedStr, balanceStr }),
           result
-        );
+        ) + (result.absencePortion === "HALF" ? t("edit.halfDayHint", { date: ddMm }) : "");
         await ctx.reply(message, { parse_mode: "Markdown" });
       } catch (err) {
         await handleBotError(ctx, err);
@@ -202,7 +254,9 @@ export async function handleEditStep(
       // Own-key check so inherited names ("constructor", "__proto__", …) are
       // rejected rather than resolving to Object.prototype members.
       if (!Object.hasOwn(PORTION_CHOICES, text)) {
-        await ctx.reply(t("edit.invalidPortion"), { parse_mode: "Markdown" });
+        const invalidKey =
+          absenceType === "HOLIDAY_EVE" ? "edit.invalidEveCoverage" : "edit.invalidPortion";
+        await ctx.reply(t(invalidKey), { parse_mode: "Markdown" });
         return;
       }
       const portion = PORTION_CHOICES[text];
@@ -222,7 +276,7 @@ export async function handleEditStep(
         const message = appendLeaveAdjustmentLines(
           t("edit.absenceSaved", { date: ddMm, absenceLabel, creditedStr, balanceStr }),
           result
-        );
+        ) + (result.absencePortion === "HALF" ? t("edit.halfDayHint", { date: ddMm }) : "");
         await ctx.reply(message, { parse_mode: "Markdown" });
       } catch (err) {
         await handleBotError(ctx, err);

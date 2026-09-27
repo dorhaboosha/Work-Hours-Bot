@@ -16,17 +16,26 @@ import { requiresPortionChoice, resolveAbsenceTerms } from "@shared/utils/record
 /** Derives the EditRecordState from the raw Prisma record. */
 function resolveState(record: PrismaRecord | null): EditRecordState {
   if (record === null) return "NO_RECORD";
+  if (record.absencePortion === "HALF") {
+    return record.startTime !== null && record.endTime === null
+      ? "HALF_DAY_OPEN_RECORD"
+      : "HALF_DAY_RECORD";
+  }
   if (record.recordType === "WORK") {
     return record.endTime === null ? "OPEN_WORK_RECORD" : "CLOSED_WORK_RECORD";
   }
   return "ABSENCE_RECORD";
 }
 
+// On a half day, SET_START_AND_END_HOURS replaces the absence with a regular
+// work day (refunding its debit); LOG_HOURS sets the hours and keeps it.
 const ALLOWED_ACTIONS: Record<EditRecordState, EditAction[]> = {
-  OPEN_WORK_RECORD:   ["SET_END_HOUR", "SET_START_AND_END_HOURS", "MARK_ABSENCE", "CANCEL"],
-  NO_RECORD:          ["SET_START_AND_END_HOURS", "MARK_ABSENCE"],
-  CLOSED_WORK_RECORD: ["SET_START_AND_END_HOURS", "MARK_ABSENCE", "CANCEL"],
-  ABSENCE_RECORD:     ["SET_START_AND_END_HOURS", "MARK_ABSENCE", "CANCEL"],
+  OPEN_WORK_RECORD:     ["SET_END_HOUR", "SET_START_AND_END_HOURS", "MARK_ABSENCE", "CANCEL"],
+  NO_RECORD:            ["SET_START_AND_END_HOURS", "MARK_ABSENCE"],
+  CLOSED_WORK_RECORD:   ["SET_START_AND_END_HOURS", "MARK_ABSENCE", "CANCEL"],
+  ABSENCE_RECORD:       ["SET_START_AND_END_HOURS", "MARK_ABSENCE", "CANCEL"],
+  HALF_DAY_RECORD:      ["LOG_HOURS", "SET_START_AND_END_HOURS", "MARK_ABSENCE", "CANCEL"],
+  HALF_DAY_OPEN_RECORD: ["SET_END_HOUR", "LOG_HOURS", "SET_START_AND_END_HOURS", "MARK_ABSENCE", "CANCEL"],
 };
 
 /** Maps a Prisma DailyRecord (Date timestamps) to the shared DailyRecord shape (ISO strings). */
@@ -108,6 +117,7 @@ function toEditWorkdayResult(
     workDate: workDateStr,
     displayDate: ddMm,
     recordType: prisma.recordType as DailyRecordType,
+    absencePortion: prisma.absencePortion,
     startTime: prisma.startTime?.toISOString() ?? null,
     expectedEndTime: prisma.expectedEndTime?.toISOString() ?? null,
     endTime: prisma.endTime?.toISOString() ?? null,
@@ -121,13 +131,61 @@ function toEditWorkdayResult(
 /** Strict HH:mm (00:00–23:59). Matches EditWorkdaySchemas hhmmSchema. */
 const HH_MM_STRICT_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 
+/** Throws INVALID_TIME_FORMAT unless both values are strict HH:mm. */
+function assertStartEndFormat(startTimeHhMm: string, endTimeHhMm: string): void {
+  if (!HH_MM_STRICT_RE.test(startTimeHhMm)) {
+    throw new AppError(
+      "INVALID_TIME_FORMAT",
+      'startTime must be in HH:mm format (e.g. "09:00")'
+    );
+  }
+  if (!HH_MM_STRICT_RE.test(endTimeHhMm)) {
+    throw new AppError(
+      "INVALID_TIME_FORMAT",
+      'endTime must be in HH:mm format (e.g. "17:30")'
+    );
+  }
+}
+
+/**
+ * Applies HH:mm start/end times to the edited date in the user's timezone.
+ * Throws INVALID_TIME_RANGE unless end is after start.
+ */
+function toUtcTimeRange(
+  workDateStr: string,
+  startTimeHhMm: string,
+  endTimeHhMm: string,
+  timezone: string
+): { startTimeUtc: Date; endTimeUtc: Date } {
+  const startTimeUtc = localTimeToUtc(workDateStr, startTimeHhMm, timezone);
+  const endTimeUtc   = localTimeToUtc(workDateStr, endTimeHhMm,   timezone);
+
+  if (endTimeUtc.getTime() <= startTimeUtc.getTime()) {
+    throw new AppError(
+      "INVALID_TIME_RANGE",
+      "endTime must be after startTime"
+    );
+  }
+  return { startTimeUtc, endTimeUtc };
+}
+
+/** Expected end of a session: start + whatever the absence credit doesn't cover. */
+function calcSessionExpectedEnd(
+  startTime: Date,
+  dailyRequiredMinutes: number,
+  creditedMinutes: number
+): Date {
+  return calcExpectedEndTime(startTime, Math.max(0, dailyRequiredMinutes - creditedMinutes));
+}
+
 // ── Action: SET_END_HOUR ──────────────────────────────────────────────────────
 
 /**
- * Closes an open WORK record by applying the given HH:mm end time to the
- * edited date in the user's timezone. The existing startTime is preserved.
+ * Closes an open work session (a WORK record, or a half-day absence with a
+ * session started) by applying the given HH:mm end time to the edited date in
+ * the user's timezone. The existing startTime (and any absence) is preserved.
  *
- * Throws CONFLICT when the date is not in OPEN_WORK_RECORD state.
+ * Throws CONFLICT when the date has no open session.
  */
 export async function setEndHour(
   telegramId: string,
@@ -188,18 +246,7 @@ export async function setStartAndEndHours(
   startTimeHhMm: string,
   endTimeHhMm: string
 ): Promise<EditWorkdayResult> {
-  if (!HH_MM_STRICT_RE.test(startTimeHhMm)) {
-    throw new AppError(
-      "INVALID_TIME_FORMAT",
-      'startTime must be in HH:mm format (e.g. "09:00")'
-    );
-  }
-  if (!HH_MM_STRICT_RE.test(endTimeHhMm)) {
-    throw new AppError(
-      "INVALID_TIME_FORMAT",
-      'endTime must be in HH:mm format (e.g. "17:30")'
-    );
-  }
+  assertStartEndFormat(startTimeHhMm, endTimeHhMm);
 
   // Catch up any owed leave accrual first — this may now refund a balance.
   const settings = await applyPendingLeaveAccrual(telegramId);
@@ -209,15 +256,12 @@ export async function setStartAndEndHours(
   const existingRecord = await findRecordByDate(telegramId, workDate);
   assertActionAllowed(resolveState(existingRecord), "SET_START_AND_END_HOURS");
 
-  const startTimeUtc = localTimeToUtc(workDateStr, startTimeHhMm, settings.timezone);
-  const endTimeUtc   = localTimeToUtc(workDateStr, endTimeHhMm,   settings.timezone);
-
-  if (endTimeUtc.getTime() <= startTimeUtc.getTime()) {
-    throw new AppError(
-      "INVALID_TIME_RANGE",
-      "endTime must be after startTime"
-    );
-  }
+  const { startTimeUtc, endTimeUtc } = toUtcTimeRange(
+    workDateStr,
+    startTimeHhMm,
+    endTimeHhMm,
+    settings.timezone
+  );
   const expectedEndTimeUtc = calcExpectedEndTime(startTimeUtc, settings.dailyRequiredMinutes);
   const workedMinutes = calcWorkedMinutes(startTimeUtc, endTimeUtc);
 
@@ -271,16 +315,70 @@ export async function setStartAndEndHours(
   };
 }
 
+// ── Action: LOG_HOURS ─────────────────────────────────────────────────────────
+
+/**
+ * Sets the worked hours on a half-day absence (e.g. the worked half of a
+ * ½ vacation day or a holiday eve), replacing any hours already logged.
+ * The absence, its credit and its leave debit are kept untouched.
+ * expectedEndTime is start + (dailyRequiredMinutes − creditedMinutes).
+ *
+ * Throws:
+ * - INVALID_TIME_FORMAT / INVALID_TIME_RANGE – bad times.
+ * - CONFLICT – the date is not a half-day absence.
+ */
+export async function setHoursOnHalfDay(
+  telegramId: string,
+  ddMm: string,
+  startTimeHhMm: string,
+  endTimeHhMm: string
+): Promise<EditWorkdayResult> {
+  assertStartEndFormat(startTimeHhMm, endTimeHhMm);
+
+  const settings = await getSettingsOrThrow(telegramId);
+  const workDateStr = resolveDdMmToDate(ddMm, settings.timezone);
+  const workDate = localDateToUtcMidnight(workDateStr);
+
+  const record = await findRecordByDate(telegramId, workDate);
+  assertActionAllowed(resolveState(record), "LOG_HOURS");
+
+  const { startTimeUtc, endTimeUtc } = toUtcTimeRange(
+    workDateStr,
+    startTimeHhMm,
+    endTimeHhMm,
+    settings.timezone
+  );
+
+  // record is guaranteed non-null and a half-day absence at this point
+  const updated = await updateDailyRecord(record!.id, {
+    startTime: startTimeUtc,
+    expectedEndTime: calcSessionExpectedEnd(
+      startTimeUtc,
+      settings.dailyRequiredMinutes,
+      record!.creditedMinutes
+    ),
+    endTime: endTimeUtc,
+    workedMinutes: calcWorkedMinutes(startTimeUtc, endTimeUtc),
+  });
+
+  return toEditWorkdayResult(updated, workDateStr, ddMm, settings.dailyRequiredMinutes);
+}
+
 // ── Action: MARK_ABSENCE ──────────────────────────────────────────────────────
 
 /**
  * Creates or replaces the record for the edited date as an absence record.
- * All timestamps (startTime, expectedEndTime, endTime) are set to null and
- * workedMinutes to 0. What the absence credits and debits comes from
+ * What the absence credits and debits comes from
  * resolveAbsenceTerms (the single source of truth for the rules):
  *   - creditedMinutes: full or half of dailyRequiredMinutes (0 for UNPAID_ABSENCE)
  *   - debit: VACATION/SICK debit 1 or 0.5 day of their balance; HOLIDAY_EVE
  *     FULL debits 0.5 vacation; other types debit nothing.
+ *
+ * Logged hours: when the new absence is a half day (allowsWorkHours) and the
+ * date already has hours (e.g. a work day being re-marked as ½ vacation, or
+ * one half-day type changed to another), the hours are kept and
+ * expectedEndTime is recomputed for the new credit. Otherwise all timestamps
+ * are set to null and workedMinutes to 0.
  *
  * `portion` is required for VACATION and SICK (see requiresPortionChoice).
  * For other types it's optional: HOLIDAY_EVE defaults to HALF (the company-
@@ -333,15 +431,21 @@ export async function markAbsence(
   const previousDays = existingRecord?.debitedLeaveDays ?? null;
   const hasPreviousDebit = previousField !== null && previousDays !== null && previousDays > 0;
 
+  const keptStartTime = terms.allowsWorkHours ? existingRecord?.startTime ?? null : null;
+  const keepHours = keptStartTime !== null;
+
   const upsertInput = {
     telegramId,
     workDate,
     recordType: absenceType,
     absencePortion: terms.portion,
-    startTime: null,
-    expectedEndTime: null,
-    endTime: null,
-    workedMinutes: 0,
+    startTime: keptStartTime,
+    expectedEndTime: keepHours
+      ? calcSessionExpectedEnd(keptStartTime, settings.dailyRequiredMinutes, terms.creditedMinutes)
+      : null,
+    endTime: keepHours ? existingRecord!.endTime : null,
+    // null while a kept session is still open, like any open session.
+    workedMinutes: keepHours ? existingRecord!.workedMinutes : 0,
     creditedMinutes: terms.creditedMinutes,
     debitedLeaveField: balanceField,
     debitedLeaveDays: debitDays,

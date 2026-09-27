@@ -19,6 +19,10 @@ export async function handleEnd(ctx: Context): Promise<void> {
     const requiredStr = formatMinutesAsDuration(result.requiredMinutes);
     const balanceStr = formatBalance(result.balanceMinutes);
     const balanceEmoji = result.balanceMinutes >= 0 ? "🟢" : "🔴";
+    const creditedLine =
+      result.creditedMinutes > 0
+        ? t("end.creditedLine", { creditedStr: formatMinutesAsDuration(result.creditedMinutes) })
+        : "";
 
     await ctx.reply(
       t("end.success", {
@@ -26,6 +30,7 @@ export async function handleEnd(ctx: Context): Promise<void> {
         startStr,
         endStr,
         workedStr,
+        creditedLine,
         requiredStr,
         balanceStr,
         balanceEmoji,

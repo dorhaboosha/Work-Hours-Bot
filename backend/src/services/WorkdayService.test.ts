@@ -263,6 +263,94 @@ describe("WorkdayService", async () => {
     });
   });
 
+  // ── startWorkday – days already marked as an absence ───────────────────────
+
+  describe("startWorkday – today marked as an absence", () => {
+    function makeTodayAbsence(
+      recordType: string,
+      absencePortion: "FULL" | "HALF",
+      creditedMinutes: number
+    ) {
+      return {
+        id: "r-abs",
+        telegramId: "user1",
+        workDate: TODAY_WORK_DATE,
+        recordType,
+        absencePortion,
+        startTime: null,
+        expectedEndTime: null,
+        endTime: null,
+        workedMinutes: 0,
+        creditedMinutes,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+    }
+
+    for (const recordType of ["VACATION", "HOLIDAY_EVE"]) {
+      it(`starts the session on today's HALF ${recordType} record instead of creating a new one`, async () => {
+        mockFindRecordByDate.mock.mockImplementationOnce(
+          async () => makeTodayAbsence(recordType, "HALF", 240)
+        );
+        mockUpdateDailyRecord.mock.mockImplementationOnce(
+          async (id: string, input: Record<string, unknown>) => ({
+            ...makeTodayAbsence(recordType, "HALF", 240),
+            id,
+            ...input,
+          })
+        );
+
+        const record = await startWorkday("user1");
+
+        assert.equal(mockCreateDailyRecord.mock.calls.length, 0);
+        assert.equal(mockUpdateDailyRecord.mock.calls.length, 1);
+        const [id, input] = mockUpdateDailyRecord.mock.calls[0].arguments;
+        assert.equal(id, "r-abs");
+        // Only the session fields are written — absence, credit and debit are kept.
+        assert.deepEqual(Object.keys(input).sort(), ["expectedEndTime", "startTime"]);
+        // Expected end covers only the remaining 480 - 240 = 240 minutes.
+        assert.equal(
+          (input.expectedEndTime as Date).getTime() - (input.startTime as Date).getTime(),
+          240 * 60_000
+        );
+        assert.equal(record.recordType, recordType);
+        assert.equal(record.creditedMinutes, 240);
+      });
+    }
+
+    it("throws DAY_MARKED_AS_ABSENCE for a full-day absence and writes nothing", async () => {
+      mockFindRecordByDate.mock.mockImplementationOnce(
+        async () => makeTodayAbsence("HOLIDAY", "FULL", 480)
+      );
+
+      await assert.rejects(() => startWorkday("user1"), (err: unknown) => {
+        assert.equal((err as { code: string }).code, "DAY_MARKED_AS_ABSENCE");
+        assert.equal(
+          (err as { details?: Record<string, unknown> }).details?.["recordType"],
+          "HOLIDAY"
+        );
+        return true;
+      });
+      assert.equal(mockCreateDailyRecord.mock.calls.length, 0);
+      assert.equal(mockUpdateDailyRecord.mock.calls.length, 0);
+    });
+
+    it("throws DAILY_RECORD_ALREADY_EXISTS for a half day whose hours were already logged", async () => {
+      mockFindRecordByDate.mock.mockImplementationOnce(async () => ({
+        ...makeTodayAbsence("VACATION", "HALF", 240),
+        startTime: new Date(Date.now() - 4 * 60 * 60 * 1000),
+        endTime: new Date(),
+        workedMinutes: 240,
+      }));
+
+      await assert.rejects(() => startWorkday("user1"), (err: unknown) => {
+        assert.equal((err as { code: string }).code, "DAILY_RECORD_ALREADY_EXISTS");
+        return true;
+      });
+      assert.equal(mockUpdateDailyRecord.mock.calls.length, 0);
+    });
+  });
+
   // ── getTodayStatus ────────────────────────────────────────────────────────────
 
   describe("getTodayStatus – happy path", () => {

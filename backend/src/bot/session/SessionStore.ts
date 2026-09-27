@@ -31,6 +31,7 @@ export type SessionStep =
   | "edit:choose_action"
   | "edit:set_end_hour"
   | "edit:set_start_end"
+  | "edit:log_hours"
   | "edit:choose_absence"
   | "edit:choose_portion";
 

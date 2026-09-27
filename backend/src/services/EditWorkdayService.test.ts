@@ -100,6 +100,8 @@ describe("EditWorkdayService", async () => {
   let setStartAndEndHours: any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let markAbsence: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let setHoursOnHalfDay: any;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let mockFindRecordByDate: ReturnType<typeof mock.fn<any>>;
@@ -259,6 +261,7 @@ describe("EditWorkdayService", async () => {
     setEndHour          = svc.setEndHour;
     setStartAndEndHours = svc.setStartAndEndHours;
     markAbsence         = svc.markAbsence;
+    setHoursOnHalfDay   = svc.setHoursOnHalfDay;
   });
 
   afterEach(() => {
@@ -1055,6 +1058,255 @@ describe("EditWorkdayService", async () => {
 
       assert.equal(mockTransaction.mock.calls.length, 0);
       assert.equal(mockUpsertRecordByDate.mock.calls[0].arguments[1], undefined);
+    });
+  });
+
+  // ── Half-day absences ────────────────────────────────────────────────────────
+  //
+  // 12-06 in Asia/Jerusalem is UTC+3: 13:00–17:00 local = 10:00–14:00 UTC.
+
+  const HALF_MIN = Math.floor(DAILY_MIN / 2); // 240
+
+  /** ½ vacation day (0.5 debited), optionally with logged or in-progress hours. */
+  function makeHalfVacation(hours: "none" | "open" | "closed" = "none") {
+    const base = makeAbsenceRecord("VACATION", HALF_MIN, "vacationBalance", 0.5, "HALF");
+    if (hours === "none") return base;
+    const startTime = new Date("2026-06-12T10:00:00Z");
+    return {
+      ...base,
+      startTime,
+      expectedEndTime: new Date(startTime.getTime() + HALF_MIN * 60_000),
+      endTime: hours === "closed" ? new Date("2026-06-12T14:00:00Z") : null,
+      workedMinutes: hours === "closed" ? 240 : null,
+    };
+  }
+
+  describe("getEditDayOptions – half-day absences", () => {
+    it("returns HALF_DAY_RECORD for a half day with no hours, allowing LOG_HOURS but not SET_END_HOUR", async () => {
+      mockFindRecordByDate.mock.mockImplementationOnce(async () => makeHalfVacation("none"));
+      const opts = await getEditDayOptions("user1", "12-06");
+      assert.equal(opts.state, "HALF_DAY_RECORD");
+      assert.ok(opts.allowedActions.includes("LOG_HOURS"));
+      assert.ok(!opts.allowedActions.includes("SET_END_HOUR"));
+    });
+
+    it("returns HALF_DAY_RECORD for a half day whose hours are already logged", async () => {
+      mockFindRecordByDate.mock.mockImplementationOnce(async () => makeHalfVacation("closed"));
+      const opts = await getEditDayOptions("user1", "12-06");
+      assert.equal(opts.state, "HALF_DAY_RECORD");
+    });
+
+    it("returns HALF_DAY_OPEN_RECORD for a half day with a session in progress, allowing SET_END_HOUR", async () => {
+      mockFindRecordByDate.mock.mockImplementationOnce(async () => makeHalfVacation("open"));
+      const opts = await getEditDayOptions("user1", "12-06");
+      assert.equal(opts.state, "HALF_DAY_OPEN_RECORD");
+      assert.ok(opts.allowedActions.includes("SET_END_HOUR"));
+      assert.ok(opts.allowedActions.includes("LOG_HOURS"));
+    });
+
+    it("keeps full-day absences as ABSENCE_RECORD, where LOG_HOURS is not allowed", async () => {
+      mockFindRecordByDate.mock.mockImplementationOnce(async () =>
+        makeAbsenceRecord("VACATION", DAILY_MIN, "vacationBalance", 1, "FULL")
+      );
+      const opts = await getEditDayOptions("user1", "12-06");
+      assert.equal(opts.state, "ABSENCE_RECORD");
+      assert.ok(!opts.allowedActions.includes("LOG_HOURS"));
+    });
+  });
+
+  describe("setHoursOnHalfDay", () => {
+    function echoUpdateOn(record: Record<string, unknown>) {
+      mockUpdateDailyRecord.mock.mockImplementationOnce(
+        async (_id: string, updates: Record<string, unknown>) => ({ ...record, ...updates })
+      );
+    }
+
+    it("sets the hours and keeps the absence, credit and debit", async () => {
+      const record = makeHalfVacation("none");
+      mockFindRecordByDate.mock.mockImplementationOnce(async () => record);
+      echoUpdateOn(record);
+
+      const result = await setHoursOnHalfDay("user1", "12-06", "13:00", "17:00");
+
+      assert.equal(mockUpdateDailyRecord.mock.calls.length, 1);
+      const [id, updates] = mockUpdateDailyRecord.mock.calls[0].arguments;
+      assert.equal(id, record.id);
+      // Only session fields are written — absence, credit and debit untouched.
+      assert.deepEqual(
+        Object.keys(updates).sort(),
+        ["endTime", "expectedEndTime", "startTime", "workedMinutes"]
+      );
+      assert.equal(updates.workedMinutes, 240);
+      assert.equal(
+        (updates.expectedEndTime as Date).getTime() - (updates.startTime as Date).getTime(),
+        HALF_MIN * 60_000
+      );
+
+      assert.equal(result.recordType, "VACATION");
+      assert.equal(result.absencePortion, "HALF");
+      assert.equal(result.creditedMinutes, HALF_MIN);
+      assert.equal(result.workedMinutes, 240);
+      assert.equal(result.balanceMinutes, 0); // 240 worked + 240 credited - 480
+
+      assert.equal(mockUpsertRecordByDate.mock.calls.length, 0);
+      assert.equal(mockDecrementLeaveBalance.mock.calls.length, 0);
+      assert.equal(mockCreditLeaveBalance.mock.calls.length, 0);
+    });
+
+    it("replaces hours that were already logged on the half day", async () => {
+      const record = makeHalfVacation("closed");
+      mockFindRecordByDate.mock.mockImplementationOnce(async () => record);
+      echoUpdateOn(record);
+
+      const result = await setHoursOnHalfDay("user1", "12-06", "13:00", "18:00");
+      assert.equal(result.workedMinutes, 300);
+    });
+
+    it("is allowed while a session on the half day is still open", async () => {
+      const record = makeHalfVacation("open");
+      mockFindRecordByDate.mock.mockImplementationOnce(async () => record);
+      echoUpdateOn(record);
+
+      const result = await setHoursOnHalfDay("user1", "12-06", "13:00", "17:00");
+      assert.equal(result.workedMinutes, 240);
+    });
+
+    for (const [label, makeRecord] of [
+      ["NO_RECORD", () => null],
+      ["CLOSED_WORK_RECORD", () => makeWorkRecord(true)],
+      ["a full-day absence", () => makeAbsenceRecord("HOLIDAY", DAILY_MIN)],
+    ] as const) {
+      it(`throws CONFLICT on ${label}`, async () => {
+        mockFindRecordByDate.mock.mockImplementationOnce(async () => makeRecord());
+        await assert.rejects(
+          () => setHoursOnHalfDay("user1", "12-06", "13:00", "17:00"),
+          (err: unknown) => {
+            assert.equal((err as { code: string }).code, "CONFLICT");
+            return true;
+          }
+        );
+        assert.equal(mockUpdateDailyRecord.mock.calls.length, 0);
+      });
+    }
+
+    it("throws INVALID_TIME_RANGE when end is not after start", async () => {
+      mockFindRecordByDate.mock.mockImplementationOnce(async () => makeHalfVacation("none"));
+      await assert.rejects(
+        () => setHoursOnHalfDay("user1", "12-06", "17:00", "13:00"),
+        (err: unknown) => {
+          assert.equal((err as { code: string }).code, "INVALID_TIME_RANGE");
+          return true;
+        }
+      );
+    });
+
+    it("throws INVALID_TIME_FORMAT before touching the database", async () => {
+      await assert.rejects(
+        () => setHoursOnHalfDay("user1", "12-06", "1pm", "17:00"),
+        (err: unknown) => {
+          assert.equal((err as { code: string }).code, "INVALID_TIME_FORMAT");
+          return true;
+        }
+      );
+      assert.equal(mockFindRecordByDate.mock.calls.length, 0);
+    });
+  });
+
+  describe("setEndHour – half day with a session in progress", () => {
+    it("closes the session and includes the half-day credit in the balance", async () => {
+      const record = makeHalfVacation("open");
+      mockFindRecordByDate.mock.mockImplementationOnce(async () => record);
+      mockUpdateDailyRecord.mock.mockImplementationOnce(
+        async (_id: string, updates: Record<string, unknown>) => ({ ...record, ...updates })
+      );
+
+      const result = await setEndHour("user1", "12-06", "17:00"); // 13:00–17:00 local
+
+      assert.equal(result.workedMinutes, 240);
+      assert.equal(result.creditedMinutes, HALF_MIN);
+      assert.equal(result.balanceMinutes, 0);
+      assert.equal(result.recordType, "VACATION");
+    });
+  });
+
+  describe("markAbsence – keeps logged hours on half days", () => {
+    it("keeps the hours when a work day is re-marked as a half vacation day", async () => {
+      // makeWorkRecord(true): 06:00–14:00 UTC, 480 worked
+      mockFindRecordByDate.mock.mockImplementationOnce(async () => makeWorkRecord(true));
+
+      const result = await markAbsence("user1", "12-06", "VACATION", "HALF");
+
+      const upsertArg = mockUpsertRecordByDate.mock.calls[0].arguments[0];
+      assert.deepEqual(upsertArg.startTime, START_UTC);
+      assert.deepEqual(upsertArg.endTime, new Date("2026-06-12T14:00:00Z"));
+      assert.equal(upsertArg.workedMinutes, DAILY_MIN);
+      assert.equal(upsertArg.creditedMinutes, HALF_MIN);
+      assert.equal(
+        (upsertArg.expectedEndTime as Date).getTime() - START_UTC.getTime(),
+        HALF_MIN * 60_000
+      );
+      assert.equal(result.balanceMinutes, DAILY_MIN + HALF_MIN - DAILY_MIN); // +240
+      assert.equal(result.leaveDebit?.amount, 0.5);
+    });
+
+    it("keeps an open session open when the day is re-marked as a half day", async () => {
+      mockFindRecordByDate.mock.mockImplementationOnce(async () => makeWorkRecord(false));
+
+      await markAbsence("user1", "12-06", "VACATION", "HALF");
+
+      const upsertArg = mockUpsertRecordByDate.mock.calls[0].arguments[0];
+      assert.deepEqual(upsertArg.startTime, START_UTC);
+      assert.equal(upsertArg.endTime, null);
+      assert.equal(upsertArg.workedMinutes, null);
+    });
+
+    it("keeps the hours and refunds the vacation debit when a half vacation day becomes a holiday eve", async () => {
+      mockFindRecordByDate.mock.mockImplementationOnce(async () => makeHalfVacation("closed"));
+
+      const result = await markAbsence("user1", "12-06", "HOLIDAY_EVE"); // defaults to HALF
+
+      const upsertArg = mockUpsertRecordByDate.mock.calls[0].arguments[0];
+      assert.equal(upsertArg.absencePortion, "HALF");
+      assert.equal(upsertArg.workedMinutes, 240);
+      assert.ok(upsertArg.startTime instanceof Date);
+      assert.equal(result.leaveRefund?.amount, 0.5);
+      assert.equal(result.leaveDebit, null);
+    });
+
+    it("clears the hours when a half day becomes a full-day absence", async () => {
+      mockFindRecordByDate.mock.mockImplementationOnce(async () => makeHalfVacation("closed"));
+
+      const result = await markAbsence("user1", "12-06", "VACATION", "FULL");
+
+      const upsertArg = mockUpsertRecordByDate.mock.calls[0].arguments[0];
+      assert.equal(upsertArg.startTime, null);
+      assert.equal(upsertArg.expectedEndTime, null);
+      assert.equal(upsertArg.endTime, null);
+      assert.equal(upsertArg.workedMinutes, 0);
+      // 0.5 refunded, then 1 debited
+      assert.equal(result.leaveRefund?.amount, 0.5);
+      assert.equal(result.leaveDebit?.amount, 1);
+    });
+
+    it("does not carry hours onto a fresh half day (no existing record)", async () => {
+      await markAbsence("user1", "12-06", "VACATION", "HALF");
+      const upsertArg = mockUpsertRecordByDate.mock.calls[0].arguments[0];
+      assert.equal(upsertArg.startTime, null);
+      assert.equal(upsertArg.workedMinutes, 0);
+    });
+  });
+
+  describe("setStartAndEndHours – turning a half day into a regular work day", () => {
+    it("is allowed on a half day and refunds its debit and clears its credit", async () => {
+      mockFindRecordByDate.mock.mockImplementationOnce(async () => makeHalfVacation("closed"));
+
+      const result = await setStartAndEndHours("user1", "12-06", "08:00", "16:00");
+
+      assert.equal(result.recordType, "WORK");
+      assert.equal(result.leaveRefund?.amount, 0.5);
+      const upsertArg = mockUpsertRecordByDate.mock.calls[0].arguments[0];
+      assert.equal(upsertArg.absencePortion, null);
+      assert.equal(upsertArg.creditedMinutes, 0);
     });
   });
 });

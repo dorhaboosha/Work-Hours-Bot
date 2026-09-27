@@ -23,14 +23,23 @@ import {
 import { AppError } from "@/utils/AppError";
 import type { WorkdayStatus, EndWorkdayResult, DateRecordLookup } from "@shared/types/ViewTypes";
 import type { DailyRecordType, RecordLookupState } from "@shared/types/CoreTypes";
+import { canLogHours } from "@shared/utils/recordTypeUtils";
 
 /**
  * Starts today's workday for the given user.
  *
+ * If today is already marked as a half-day absence (e.g. ½ vacation day, or a
+ * holiday eve whose other half is worked) and no hours were logged on it yet,
+ * the session starts on that record instead of creating a new one: its
+ * absence, credit and debit are kept, and expectedEndTime only covers the
+ * remaining (required − credited) minutes.
+ *
  * Guards (checked in order):
  * - PREVIOUS_RECORD_STILL_OPEN  – an open record exists from a prior local date.
- * - DAILY_RECORD_ALREADY_EXISTS – a record (open or closed) already exists for
- *                                  today's local date.
+ * - DAILY_RECORD_ALREADY_EXISTS – today already has a session (open or closed),
+ *                                  including a half day with hours logged.
+ * - DAY_MARKED_AS_ABSENCE       – today is a full-day absence (no hours can be
+ *                                  logged on it). details.recordType holds the type.
  * - USER_SETTINGS_NOT_FOUND     – no settings found (from getSettingsOrThrow).
  *
  * `settings` may be passed in when the caller has already loaded it (e.g. a
@@ -68,15 +77,37 @@ export async function startWorkday(
     );
   }
 
-  // Also guard against a closed record for today (duplicate date)
+  const startTime = new Date();
+
   if (existingToday !== null) {
+    // Half-day absence with no hours logged yet → start the session on it.
+    if (canLogHours(existingToday) && existingToday.startTime === null) {
+      const remainingRequired = Math.max(
+        0,
+        resolvedSettings.dailyRequiredMinutes - existingToday.creditedMinutes
+      );
+      return updateDailyRecord(existingToday.id, {
+        startTime,
+        expectedEndTime: calcExpectedEndTime(startTime, remainingRequired),
+      });
+    }
+
+    if (!canLogHours(existingToday)) {
+      throw new AppError(
+        "DAY_MARKED_AS_ABSENCE",
+        "Today is marked as a full-day absence.",
+        { recordType: existingToday.recordType }
+      );
+    }
+
+    // A session already exists for today (closed WORK day, or a half day
+    // with hours already logged).
     throw new AppError(
       "DAILY_RECORD_ALREADY_EXISTS",
       "A record for today already exists."
     );
   }
 
-  const startTime = new Date();
   const expectedEndTime = calcExpectedEndTime(
     startTime,
     resolvedSettings.dailyRequiredMinutes

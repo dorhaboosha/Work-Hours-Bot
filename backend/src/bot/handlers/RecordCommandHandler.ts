@@ -56,11 +56,36 @@ export async function handleRecord(ctx: Context): Promise<void> {
         break;
       }
       case "ABSENCE_RECORD": {
-        const recType = lookup.record.recordType;
+        const { record } = lookup;
+        const recType = record.recordType;
         const absenceLabel = isAbsenceRecordType(recType)
           ? t(`absenceType.${recType as AbsenceRecordType}`)
           : recType;
-        msg = t("record.absence", { date: ddMm, absenceLabel });
+
+        if (record.absencePortion !== "HALF") {
+          msg = t("record.absence", { date: ddMm, absenceLabel });
+          break;
+        }
+
+        // Half day: show its credit and whatever hours were logged on it.
+        let hoursLine: string;
+        if (!record.startTime) {
+          hoursLine = t("record.halfDayNoHours");
+        } else if (!record.endTime) {
+          hoursLine = t("record.halfDayOpen", { startStr: formatTime(record.startTime, timezone) });
+        } else {
+          hoursLine = t("record.halfDayHours", {
+            startStr: formatTime(record.startTime, timezone),
+            endStr: formatTime(record.endTime, timezone),
+            workedStr: formatMinutesAsDuration(record.workedMinutes ?? 0),
+          });
+        }
+        msg = t("record.halfDay", {
+          date: ddMm,
+          absenceLabel,
+          creditedStr: formatMinutesAsDuration(record.creditedMinutes ?? 0),
+          hoursLine,
+        });
         break;
       }
       case "NO_RECORD":
