@@ -38,7 +38,8 @@ It was built as a backend-focused project with an emphasis on clean architecture
 - **Daily work tracking** — clock in with `/start`, check progress with `/status`, and close the day with `/end`
 - **Record lookup** — use `/record dd-mm` to instantly view the details of any specific date (read-only)
 - **Edit past dates** — use `/edit dd-mm` to fix hours or mark absences on any workday
-- **Absence types** — sick, vacation, holiday, holiday eve, unpaid absence, and election (via the edit flow)
+- **Absence types** — sick, vacation, holiday, holiday eve, unpaid absence, and election (via the edit flow). Holidays, holiday eves and election days are company-paid and never debit your vacation balance
+- **Half days** — vacation and sick days can be marked as a full or half day. On a holiday eve the company covers half, and you choose whether the other half was a ½ vacation day or worked. Log the worked half with `/start` and `/end`, or with `/edit dd-mm` → *Log hours worked*
 - **Summaries** — weekly and monthly balance views against your configured required hours
 - **Settings** — one-time `/setup`, then `/settings` and `/settings_edit` for daily hours, workdays, and timezone
 - **Data retention** — daily records from past months are purged automatically; the current month plus a short trailing buffer is kept (see [Data Retention](#data-retention))

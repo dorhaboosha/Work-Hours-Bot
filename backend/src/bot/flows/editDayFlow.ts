@@ -19,7 +19,12 @@ import { requiresPortionChoice } from "@shared/utils/recordTypeUtils";
 import type { AbsencePortion, AbsenceRecordType } from "@shared/types/CoreTypes";
 import type { EditWorkdayResult } from "@shared/types/ViewTypes";
 
-/** Maps the full/half day menu choice to the absence portion. */
+/**
+ * Maps the portion menu choice to the absence portion. Same keys for both menus:
+ * - VACATION / SICK: 1 = full day, 2 = half day.
+ * - HOLIDAY_EVE (company covers half): 1 = other half as ½ vacation day (FULL),
+ *   2 = other half worked (HALF).
+ */
 const PORTION_CHOICES: Record<string, AbsencePortion> = { "1": "FULL", "2": "HALF" };
 
 /**
@@ -210,11 +215,16 @@ export async function handleEditStep(
 
       const absenceType = ABSENCE_TYPES[idx - 1];
 
-      if (requiresPortionChoice(absenceType)) {
-        // Ask whether it was a full or half day before saving.
+      if (requiresPortionChoice(absenceType) || absenceType === "HOLIDAY_EVE") {
+        // Ask whether it was a full or half day (or, for a holiday eve, how
+        // the non-company half was covered) before saving.
         const absenceLabel = t(`absenceType.${absenceType}`);
         SessionStore.set(userId, { step: "edit:choose_portion", data: { ddMm, absenceType } });
-        await ctx.reply(t("edit.promptPortion", { absenceLabel }), { parse_mode: "Markdown" });
+        const prompt =
+          absenceType === "HOLIDAY_EVE"
+            ? t("edit.promptEveCoverage")
+            : t("edit.promptPortion", { absenceLabel });
+        await ctx.reply(prompt, { parse_mode: "Markdown" });
         break;
       }
 
@@ -244,7 +254,9 @@ export async function handleEditStep(
       // Own-key check so inherited names ("constructor", "__proto__", …) are
       // rejected rather than resolving to Object.prototype members.
       if (!Object.hasOwn(PORTION_CHOICES, text)) {
-        await ctx.reply(t("edit.invalidPortion"), { parse_mode: "Markdown" });
+        const invalidKey =
+          absenceType === "HOLIDAY_EVE" ? "edit.invalidEveCoverage" : "edit.invalidPortion";
+        await ctx.reply(t(invalidKey), { parse_mode: "Markdown" });
         return;
       }
       const portion = PORTION_CHOICES[text];
