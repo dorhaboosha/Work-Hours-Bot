@@ -118,14 +118,18 @@ export interface DailyRecord {
   /** Local work date in user's timezone. Format: YYYY-MM-DD */
   workDate: string;
   recordType: DailyRecordType;
+  /** How much of the day the absence covers. null for WORK records. */
+  absencePortion?: AbsencePortion | null;
   /** UTC timestamp. null for absence records */
   startTime?: string | null;
   /** UTC timestamp. null for absence records */
   expectedEndTime?: string | null;
   /** UTC timestamp. null while a WORK record is active, or for absence records */
   endTime?: string | null;
-  /** Integer >= 0. null only while a WORK record is active */
+  /** Actual worked minutes, integer >= 0. 0 for full-day absences; null only while a work session is active */
   workedMinutes?: number | null;
+  /** Minutes credited by the absence (leave or company-paid time). 0 for WORK records. */
+  creditedMinutes?: number;
   /** Which leave balance this record currently debits, if any. null for WORK and non-debitable absence types. */
   debitedLeaveField?: "vacationBalance" | "sickBalance" | null;
   /** The amount debited for this record, if any. null when debitedLeaveField is null. */

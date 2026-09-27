@@ -11,57 +11,11 @@ export function isAbsenceRecordType(
 }
 
 /**
- * Calculates the minutes to credit for an absence record based on the user's
- * daily required minutes and the absence credit rule:
- * - SICK / VACATION / HOLIDAY / ELECTION → full required day
- * - HOLIDAY_EVE                          → half required day (floor)
- * - UNPAID_ABSENCE                       → 0
+ * Returns true for absence types where the user must choose a full or half
+ * day (VACATION, SICK). Every other type has a fixed portion.
  */
-export function calculateCreditedMinutes(
-  recordType: AbsenceRecordType,
-  dailyRequiredMinutes: number
-): number {
-  switch (recordType) {
-    case "SICK":
-    case "VACATION":
-    case "HOLIDAY":
-    case "ELECTION":
-      return dailyRequiredMinutes;
-
-    case "HOLIDAY_EVE":
-      return Math.floor(dailyRequiredMinutes / 2);
-
-    case "UNPAID_ABSENCE":
-      return 0;
-  }
-}
-
-/**
- * Maps an absence type to the leave balance it debits when marked, if any.
- * Independent of calculateCreditedMinutes: the debited amount is a
- * user-chosen number of leave-balance days, unrelated to how many work-
- * minutes the day is credited for.
- * - VACATION                                     → vacationBalance
- * - SICK                                         → sickBalance
- * - HOLIDAY / HOLIDAY_EVE / ELECTION / UNPAID_ABSENCE → no balance debited
- *   (holidays, holiday eves and election day are company-paid leave)
- */
-export function getLeaveBalanceField(
-  recordType: AbsenceRecordType
-): "vacationBalance" | "sickBalance" | null {
-  switch (recordType) {
-    case "VACATION":
-      return "vacationBalance";
-
-    case "SICK":
-      return "sickBalance";
-
-    case "HOLIDAY":
-    case "HOLIDAY_EVE":
-    case "UNPAID_ABSENCE":
-    case "ELECTION":
-      return null;
-  }
+export function requiresPortionChoice(recordType: AbsenceRecordType): boolean {
+  return recordType === "VACATION" || recordType === "SICK";
 }
 
 /** What marking an absence of a given type and portion credits and debits. */

@@ -20,7 +20,9 @@ export interface WorkdayStatus {
   expectedEndTime: string;
   /** Integer >= 0, computed from startTime to now */
   workedMinutesSoFar: number;
-  /** Integer >= 0, clamped to 0 when the user has already met their required minutes */
+  /** Minutes already credited to the day by a half-day absence (0 on a regular workday) */
+  creditedMinutes: number;
+  /** Integer >= 0, clamped to 0 when worked + credited already meets the required minutes */
   remainingMinutes: number;
   isActive: boolean;
 }
@@ -41,8 +43,10 @@ export interface EndWorkdayResult {
   endTime: string;
   /** Integer >= 0 */
   workedMinutes: number;
+  /** Minutes credited to the day by a half-day absence (0 on a regular workday) */
+  creditedMinutes: number;
   requiredMinutes: number;
-  /** workedMinutes - requiredMinutes; positive = overtime, negative = under */
+  /** workedMinutes + creditedMinutes - requiredMinutes; positive = overtime, negative = under */
   balanceMinutes: number;
 }
 
@@ -77,15 +81,17 @@ export interface EditWorkdayResult {
   expectedEndTime?: string | null;
   /** UTC timestamp. null for absence records */
   endTime?: string | null;
-  /** Integer >= 0 */
+  /** Actual worked minutes, integer >= 0 */
   workedMinutes: number;
+  /** Minutes credited by the absence (leave or company-paid time). 0 for WORK records. */
+  creditedMinutes: number;
   requiredMinutes: number;
-  /** workedMinutes - requiredMinutes; positive = overtime, negative = under */
+  /** workedMinutes + creditedMinutes - requiredMinutes; positive = overtime, negative = under */
   balanceMinutes: number;
   /**
-   * Present only when MARK_ABSENCE was applied to a debitable absence type
-   * (VACATION/HOLIDAY/HOLIDAY_EVE/SICK). null for SET_END_HOUR,
-   * SET_START_AND_END_HOURS, and MARK_ABSENCE with UNPAID_ABSENCE/ELECTION.
+   * Present only when MARK_ABSENCE debited a leave balance (VACATION, SICK,
+   * or HOLIDAY_EVE with the other half taken as vacation). null for
+   * SET_END_HOUR, SET_START_AND_END_HOURS, and non-debiting absences.
    */
   leaveDebit?: {
     field: "vacationBalance" | "sickBalance";
@@ -143,7 +149,10 @@ export interface WorkSummary {
   month?: string;
   workdaysCount: number;
   requiredMinutes: number;
+  /** Actual worked minutes */
   workedMinutes: number;
-  /** workedMinutes - requiredMinutes */
+  /** Minutes credited by absences (leave or company-paid time) */
+  creditedMinutes: number;
+  /** workedMinutes + creditedMinutes - requiredMinutes */
   balanceMinutes: number;
 }

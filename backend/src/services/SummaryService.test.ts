@@ -60,6 +60,8 @@ function makeClosedRecord(dateStr: string, workedMinutes: number) {
     expectedEndTime: new Date(`${dateStr}T14:00:00Z`),
     endTime: new Date(`${dateStr}T14:00:00Z`),
     workedMinutes,
+    absencePortion: null,
+    creditedMinutes: 0,
     createdAt: new Date(),
     updatedAt: new Date(),
   };
@@ -68,17 +70,21 @@ function makeClosedRecord(dateStr: string, workedMinutes: number) {
 function makeAbsenceRecord(
   dateStr: string,
   recordType: string,
-  workedMinutes: number
+  creditedMinutes: number,
+  absencePortion: "FULL" | "HALF" = "FULL",
+  workedMinutes = 0
 ) {
   return {
     id: `r-abs-${dateStr}`,
     telegramId: "u1",
     workDate: new Date(`${dateStr}T00:00:00Z`),
     recordType,
+    absencePortion,
     startTime: null,
     expectedEndTime: null,
     endTime: null,
     workedMinutes,
+    creditedMinutes,
     createdAt: new Date(),
     updatedAt: new Date(),
   };
@@ -94,6 +100,8 @@ function makeOpenRecord(dateStr: string) {
     expectedEndTime: new Date(Date.now() + 6 * 60 * 60 * 1000),
     endTime: null,
     workedMinutes: null,
+    absencePortion: null,
+    creditedMinutes: 0,
     createdAt: new Date(),
     updatedAt: new Date(),
   };
@@ -309,9 +317,10 @@ describe("SummaryService", async () => {
         ...WEEK_DATES.slice(1).map((d) => makeClosedRecord(d, DAILY_MIN)),
       ];
       const r = aggregateSummary(WEEK_DATES, records, DAILY_MIN, TIMEZONE);
-      // 1 SICK day: +DAILY_MIN worked, +DAILY_MIN required (credited = required)
-      // 4 WORK days: +DAILY_MIN each
-      assert.equal(r.workedMinutes, 5 * DAILY_MIN);
+      // 1 SICK day: +DAILY_MIN credited, +DAILY_MIN required
+      // 4 WORK days: +DAILY_MIN worked each
+      assert.equal(r.workedMinutes, 4 * DAILY_MIN);
+      assert.equal(r.creditedMinutes, DAILY_MIN);
       assert.equal(r.requiredMinutes, 5 * DAILY_MIN);
       assert.equal(r.balanceMinutes, 0);
     });
@@ -322,7 +331,8 @@ describe("SummaryService", async () => {
         ...WEEK_DATES.slice(1).map((d) => makeClosedRecord(d, DAILY_MIN)),
       ];
       const r = aggregateSummary(WEEK_DATES, records, DAILY_MIN, TIMEZONE);
-      assert.equal(r.workedMinutes, 5 * DAILY_MIN);
+      assert.equal(r.workedMinutes, 4 * DAILY_MIN);
+      assert.equal(r.creditedMinutes, DAILY_MIN);
       assert.equal(r.balanceMinutes, 0);
     });
 
@@ -333,7 +343,8 @@ describe("SummaryService", async () => {
         ...WEEK_DATES.slice(1).map((d) => makeClosedRecord(d, DAILY_MIN)),
       ];
       const r = aggregateSummary(WEEK_DATES, records, DAILY_MIN, TIMEZONE);
-      assert.equal(r.workedMinutes,   4 * DAILY_MIN + halfCredit); // 1920 + 240 = 2160
+      assert.equal(r.workedMinutes,   4 * DAILY_MIN);              // 1920
+      assert.equal(r.creditedMinutes, halfCredit);                 // 240
       assert.equal(r.requiredMinutes, 5 * DAILY_MIN);              // always full per workday = 2400
       assert.equal(r.balanceMinutes,  4 * DAILY_MIN + halfCredit - 5 * DAILY_MIN); // -240
     });
@@ -345,6 +356,7 @@ describe("SummaryService", async () => {
       ];
       const r = aggregateSummary(WEEK_DATES, records, DAILY_MIN, TIMEZONE);
       assert.equal(r.workedMinutes,   4 * DAILY_MIN);  // 0 + 4×480 = 1920
+      assert.equal(r.creditedMinutes, 0);
       assert.equal(r.requiredMinutes, 5 * DAILY_MIN);  // always full per workday = 2400
       assert.equal(r.balanceMinutes,  -DAILY_MIN);     // 1920 - 2400 = -480
     });
@@ -353,20 +365,35 @@ describe("SummaryService", async () => {
       const halfCredit = Math.floor(DAILY_MIN / 2); // 240
       const records = [
         makeClosedRecord(WEEK_DATES[0], DAILY_MIN),                   // WORK:  +480 worked
-        makeAbsenceRecord(WEEK_DATES[1], "SICK",          DAILY_MIN), // SICK:  +480 worked
-        makeAbsenceRecord(WEEK_DATES[2], "HOLIDAY_EVE",  halfCredit), // H-EVE: +240 worked
-        makeAbsenceRecord(WEEK_DATES[3], "UNPAID_ABSENCE",       0),  // UNPD:  +0   worked
-        // WEEK_DATES[4] missing:                                       // MISS:  +0   worked
+        makeAbsenceRecord(WEEK_DATES[1], "SICK",          DAILY_MIN), // SICK:  +480 credited
+        makeAbsenceRecord(WEEK_DATES[2], "HOLIDAY_EVE",  halfCredit, "HALF"), // H-EVE: +240 credited
+        makeAbsenceRecord(WEEK_DATES[3], "UNPAID_ABSENCE",       0),  // UNPD:  +0
+        // WEEK_DATES[4] missing:                                       // MISS:  +0
         // required = 5 × DAILY_MIN for all 5 workdays
       ];
       const r = aggregateSummary(WEEK_DATES, records, DAILY_MIN, TIMEZONE);
 
-      const expectedWorked   = DAILY_MIN + DAILY_MIN + halfCredit + 0 + 0; // 1200
-      const expectedRequired = 5 * DAILY_MIN;                               // 2400
+      const expectedWorked   = DAILY_MIN;              // 480
+      const expectedCredited = DAILY_MIN + halfCredit; // 720
+      const expectedRequired = 5 * DAILY_MIN;          // 2400
 
       assert.equal(r.workedMinutes,   expectedWorked);
+      assert.equal(r.creditedMinutes, expectedCredited);
       assert.equal(r.requiredMinutes, expectedRequired);
-      assert.equal(r.balanceMinutes,  expectedWorked - expectedRequired); // -1200
+      assert.equal(r.balanceMinutes,  expectedWorked + expectedCredited - expectedRequired); // -1200
+    });
+
+    it("counts both credit and logged hours for a half-day absence", () => {
+      const halfCredit = Math.floor(DAILY_MIN / 2); // 240
+      const records = [
+        // ½ vacation + 4h worked on the same day
+        makeAbsenceRecord(WEEK_DATES[0], "VACATION", halfCredit, "HALF", 240),
+        ...WEEK_DATES.slice(1).map((d) => makeClosedRecord(d, DAILY_MIN)),
+      ];
+      const r = aggregateSummary(WEEK_DATES, records, DAILY_MIN, TIMEZONE);
+      assert.equal(r.workedMinutes,   4 * DAILY_MIN + 240);
+      assert.equal(r.creditedMinutes, halfCredit);
+      assert.equal(r.balanceMinutes,  0);
     });
   });
 
@@ -388,9 +415,12 @@ describe("SummaryService", async () => {
       assert.equal(result.balanceMinutes, -result.requiredMinutes);
     });
 
-    it("balance formula holds: balanceMinutes = workedMinutes - requiredMinutes", async () => {
+    it("balance formula holds: balanceMinutes = workedMinutes + creditedMinutes - requiredMinutes", async () => {
       const result = await getWeekSummary("u1");
-      assert.equal(result.balanceMinutes, result.workedMinutes - result.requiredMinutes);
+      assert.equal(
+        result.balanceMinutes,
+        result.workedMinutes + result.creditedMinutes - result.requiredMinutes
+      );
     });
   });
 
@@ -440,9 +470,12 @@ describe("SummaryService", async () => {
       assert.equal(result.balanceMinutes, -result.requiredMinutes);
     });
 
-    it("balance formula holds: balanceMinutes = workedMinutes - requiredMinutes", async () => {
+    it("balance formula holds: balanceMinutes = workedMinutes + creditedMinutes - requiredMinutes", async () => {
       const result = await getMonthSummary("u1");
-      assert.equal(result.balanceMinutes, result.workedMinutes - result.requiredMinutes);
+      assert.equal(
+        result.balanceMinutes,
+        result.workedMinutes + result.creditedMinutes - result.requiredMinutes
+      );
     });
   });
 

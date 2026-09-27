@@ -116,8 +116,10 @@ export async function getTodayStatus(
       throw new AppError("ACTIVE_RECORD_NOT_FOUND", "Open record is missing time data.");
     }
     const workedMinutesSoFar = calcWorkedMinutesSoFar(openRecord.startTime);
+    // Non-zero only when the open session is on a half-day absence record.
+    const creditedMinutes = openRecord.creditedMinutes;
     const remainingMinutes = calcRemainingMinutes(
-      workedMinutesSoFar,
+      workedMinutesSoFar + creditedMinutes,
       resolvedSettings.dailyRequiredMinutes
     );
 
@@ -126,6 +128,7 @@ export async function getTodayStatus(
       startTime: openRecord.startTime.toISOString(),
       expectedEndTime: openRecord.expectedEndTime.toISOString(),
       workedMinutesSoFar,
+      creditedMinutes,
       remainingMinutes,
       isActive: true,
     };
@@ -192,7 +195,11 @@ export async function endWorkday(
   }
   const endTime = new Date();
   const workedMinutes = calcWorkedMinutes(openRecord.startTime, endTime);
-  const balanceMinutes = calcBalance(workedMinutes, resolvedSettings.dailyRequiredMinutes);
+  const creditedMinutes = openRecord.creditedMinutes;
+  const balanceMinutes = calcBalance(
+    workedMinutes + creditedMinutes,
+    resolvedSettings.dailyRequiredMinutes
+  );
 
   const updated = await updateDailyRecord(openRecord.id, { endTime, workedMinutes });
 
@@ -207,6 +214,7 @@ export async function endWorkday(
     expectedEndTime: updated.expectedEndTime.toISOString(),
     endTime: updated.endTime!.toISOString(),
     workedMinutes: updated.workedMinutes!,
+    creditedMinutes,
     requiredMinutes: resolvedSettings.dailyRequiredMinutes,
     balanceMinutes,
   };
@@ -246,10 +254,12 @@ export async function getDateRecord(
     telegramId: prisma!.telegramId,
     workDate: workDateStr,
     recordType: prisma!.recordType as DailyRecordType,
+    absencePortion: prisma!.absencePortion,
     startTime: prisma!.startTime?.toISOString() ?? null,
     expectedEndTime: prisma!.expectedEndTime?.toISOString() ?? null,
     endTime: prisma!.endTime?.toISOString() ?? null,
     workedMinutes: prisma!.workedMinutes ?? null,
+    creditedMinutes: prisma!.creditedMinutes,
     createdAt: prisma!.createdAt.toISOString(),
     updatedAt: prisma!.updatedAt.toISOString(),
   };

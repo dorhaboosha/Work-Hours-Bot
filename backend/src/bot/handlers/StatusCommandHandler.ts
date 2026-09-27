@@ -18,7 +18,9 @@ export async function handleStatus(ctx: Context): Promise<void> {
     const workedStr = formatMinutesAsDuration(status.workedMinutesSoFar);
     const remainingStr = formatMinutesAsDuration(status.remainingMinutes);
     const requiredStr = formatMinutesAsDuration(settings.dailyRequiredMinutes);
-    const balanceStr = formatBalance(status.workedMinutesSoFar - settings.dailyRequiredMinutes);
+    const balanceStr = formatBalance(
+      status.workedMinutesSoFar + status.creditedMinutes - settings.dailyRequiredMinutes
+    );
 
     const goalReached = status.remainingMinutes === 0;
     const hint = t(goalReached ? "status.hintGoalReached" : "status.hint");

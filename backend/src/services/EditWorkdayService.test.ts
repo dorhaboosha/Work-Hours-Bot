@@ -51,10 +51,12 @@ function makeWorkRecord(closed = false) {
     telegramId: "user1",
     workDate: new Date("2026-06-12T00:00:00Z"),
     recordType: "WORK",
+    absencePortion: null,
     startTime: START_UTC,
     expectedEndTime: new Date(START_UTC.getTime() + DAILY_MIN * 60_000),
     endTime: closed ? new Date("2026-06-12T14:00:00Z") : null,
     workedMinutes: closed ? DAILY_MIN : null,
+    creditedMinutes: 0,
     createdAt: new Date(),
     updatedAt: new Date(),
   };
@@ -62,19 +64,22 @@ function makeWorkRecord(closed = false) {
 
 function makeAbsenceRecord(
   recordType: string,
-  workedMinutes: number,
+  creditedMinutes: number,
   debitedLeaveField: "vacationBalance" | "sickBalance" | null = null,
-  debitedLeaveDays: number | null = null
+  debitedLeaveDays: number | null = null,
+  absencePortion: "FULL" | "HALF" = "FULL"
 ) {
   return {
     id: "r2",
     telegramId: "user1",
     workDate: new Date("2026-06-12T00:00:00Z"),
     recordType,
+    absencePortion,
     startTime: null,
     expectedEndTime: null,
     endTime: null,
-    workedMinutes,
+    workedMinutes: 0,
+    creditedMinutes,
     debitedLeaveField,
     debitedLeaveDays,
     createdAt: new Date(),
@@ -145,10 +150,12 @@ describe("EditWorkdayService", async () => {
         telegramId: input["telegramId"],
         workDate: input["workDate"],
         recordType: input["recordType"],
+        absencePortion: input["absencePortion"] ?? null,
         startTime: input["startTime"],
         expectedEndTime: input["expectedEndTime"],
         endTime: input["endTime"],
         workedMinutes: input["workedMinutes"],
+        creditedMinutes: input["creditedMinutes"] ?? 0,
         createdAt: new Date(),
         updatedAt: new Date(),
       })
@@ -568,41 +575,74 @@ describe("EditWorkdayService", async () => {
   // ── markAbsence ───────────────────────────────────────────────────────────────
 
   describe("markAbsence – credited minutes (dailyRequiredMinutes = 480)", () => {
-    it("credits SICK as full day (480 min) with zero balance at the day level", async () => {
-      const result = await markAbsence("user1", "12-06", "SICK", 1);
-      assert.equal(result.workedMinutes, DAILY_MIN);
-      assert.equal(result.balanceMinutes, 0); // 480 - 480 = 0
+    const HALF_MIN = Math.floor(DAILY_MIN / 2); // 240
+
+    it("credits SICK FULL as a full day with zero balance at the day level", async () => {
+      const result = await markAbsence("user1", "12-06", "SICK", "FULL");
+      assert.equal(result.creditedMinutes, DAILY_MIN);
+      assert.equal(result.workedMinutes, 0);
+      assert.equal(result.balanceMinutes, 0); // 0 + 480 - 480 = 0
     });
 
-    it("credits VACATION as full day", async () => {
-      const result = await markAbsence("user1", "12-06", "VACATION", 1);
-      assert.equal(result.workedMinutes, DAILY_MIN);
+    it("credits VACATION FULL as a full day", async () => {
+      const result = await markAbsence("user1", "12-06", "VACATION", "FULL");
+      assert.equal(result.creditedMinutes, DAILY_MIN);
+    });
+
+    it("credits VACATION HALF as half a day", async () => {
+      const result = await markAbsence("user1", "12-06", "VACATION", "HALF");
+      assert.equal(result.creditedMinutes, HALF_MIN);
+      assert.equal(result.balanceMinutes, HALF_MIN - DAILY_MIN); // -240
+    });
+
+    it("credits SICK HALF as half a day", async () => {
+      const result = await markAbsence("user1", "12-06", "SICK", "HALF");
+      assert.equal(result.creditedMinutes, HALF_MIN);
     });
 
     it("credits HOLIDAY as full day", async () => {
       const result = await markAbsence("user1", "12-06", "HOLIDAY");
-      assert.equal(result.workedMinutes, DAILY_MIN);
+      assert.equal(result.creditedMinutes, DAILY_MIN);
     });
 
     it("credits ELECTION as full day", async () => {
       const result = await markAbsence("user1", "12-06", "ELECTION");
-      assert.equal(result.workedMinutes, DAILY_MIN);
+      assert.equal(result.creditedMinutes, DAILY_MIN);
     });
 
-    it("credits HOLIDAY_EVE as half day = floor(480 / 2) = 240 min", async () => {
+    it("credits HOLIDAY_EVE as half day by default (company-paid half only)", async () => {
       const result = await markAbsence("user1", "12-06", "HOLIDAY_EVE");
-      assert.equal(result.workedMinutes, Math.floor(DAILY_MIN / 2)); // 240
-      assert.equal(result.balanceMinutes, Math.floor(DAILY_MIN / 2) - DAILY_MIN); // -240
+      assert.equal(result.creditedMinutes, HALF_MIN);
+      assert.equal(result.balanceMinutes, HALF_MIN - DAILY_MIN); // -240
+    });
+
+    it("credits HOLIDAY_EVE FULL (other half as vacation) as a full day", async () => {
+      const result = await markAbsence("user1", "12-06", "HOLIDAY_EVE", "FULL");
+      assert.equal(result.creditedMinutes, DAILY_MIN);
+      assert.equal(result.balanceMinutes, 0);
     });
 
     it("credits UNPAID_ABSENCE as 0 min", async () => {
       const result = await markAbsence("user1", "12-06", "UNPAID_ABSENCE");
-      assert.equal(result.workedMinutes, 0);
+      assert.equal(result.creditedMinutes, 0);
       assert.equal(result.balanceMinutes, -DAILY_MIN); // 0 - 480 = -480
     });
 
+    it("writes the portion and credit to the record, with workedMinutes 0", async () => {
+      await markAbsence("user1", "12-06", "VACATION", "HALF");
+      const upsertArg = mockUpsertRecordByDate.mock.calls[0].arguments[0];
+      assert.equal(upsertArg.absencePortion, "HALF");
+      assert.equal(upsertArg.creditedMinutes, HALF_MIN);
+      assert.equal(upsertArg.workedMinutes, 0);
+    });
+
+    it("stores FULL for types with a fixed portion even when HALF is passed", async () => {
+      await markAbsence("user1", "12-06", "HOLIDAY", "HALF");
+      assert.equal(mockUpsertRecordByDate.mock.calls[0].arguments[0].absencePortion, "FULL");
+    });
+
     it("sets recordType to the absence type (not WORK)", async () => {
-      const result = await markAbsence("user1", "12-06", "SICK", 1);
+      const result = await markAbsence("user1", "12-06", "SICK", "FULL");
       assert.equal(result.recordType, "SICK");
     });
 
@@ -614,7 +654,7 @@ describe("EditWorkdayService", async () => {
 
   describe("markAbsence – record shape", () => {
     it("calls upsertRecordByDate with null timestamps (no clock-in/out)", async () => {
-      await markAbsence("user1", "12-06", "SICK", 1);
+      await markAbsence("user1", "12-06", "SICK", "FULL");
       const arg = mockUpsertRecordByDate.mock.calls[0].arguments[0];
       assert.equal(arg.startTime, null);
       assert.equal(arg.expectedEndTime, null);
@@ -622,13 +662,13 @@ describe("EditWorkdayService", async () => {
     });
 
     it("calls upsertRecordByDate exactly once", async () => {
-      await markAbsence("user1", "12-06", "VACATION", 1);
+      await markAbsence("user1", "12-06", "VACATION", "FULL");
       assert.equal(mockUpsertRecordByDate.mock.calls.length, 1);
     });
 
     it("is allowed on an existing CLOSED_WORK_RECORD (replaces it with absence)", async () => {
       mockFindRecordByDate.mock.mockImplementationOnce(async () => makeWorkRecord(true));
-      const result = await markAbsence("user1", "12-06", "SICK", 1);
+      const result = await markAbsence("user1", "12-06", "SICK", "FULL");
       assert.equal(result.recordType, "SICK");
     });
 
@@ -636,7 +676,7 @@ describe("EditWorkdayService", async () => {
       mockFindRecordByDate.mock.mockImplementationOnce(async () =>
         makeAbsenceRecord("VACATION", DAILY_MIN)
       );
-      const result = await markAbsence("user1", "12-06", "SICK", 1);
+      const result = await markAbsence("user1", "12-06", "SICK", "FULL");
       assert.equal(result.recordType, "SICK");
     });
   });
@@ -644,19 +684,34 @@ describe("EditWorkdayService", async () => {
   // ── markAbsence – leave balance debiting ────────────────────────────────────
 
   describe("markAbsence – leave balance debiting", () => {
-    it("debits vacationBalance for VACATION and returns leaveDebit", async () => {
-      const result = await markAbsence("user1", "12-06", "VACATION", 1.5);
+    it("debits 1 vacation day for VACATION FULL and returns leaveDebit", async () => {
+      const result = await markAbsence("user1", "12-06", "VACATION", "FULL");
 
       assert.equal(mockDecrementLeaveBalance.mock.calls.length, 1);
       assert.equal(mockDecrementLeaveBalance.mock.calls[0].arguments[0], "user1");
       assert.equal(mockDecrementLeaveBalance.mock.calls[0].arguments[1], "vacationBalance");
-      assert.equal(mockDecrementLeaveBalance.mock.calls[0].arguments[2], 1.5);
+      assert.equal(mockDecrementLeaveBalance.mock.calls[0].arguments[2], 1);
 
       assert.deepEqual(result.leaveDebit, {
         field: "vacationBalance",
-        amount: 1.5,
-        newBalance: SETTINGS.vacationBalance - 1.5,
+        amount: 1,
+        newBalance: SETTINGS.vacationBalance - 1,
       });
+    });
+
+    it("debits 0.5 vacation day for VACATION HALF", async () => {
+      const result = await markAbsence("user1", "12-06", "VACATION", "HALF");
+
+      assert.equal(mockDecrementLeaveBalance.mock.calls[0].arguments[2], 0.5);
+      assert.equal(result.leaveDebit?.amount, 0.5);
+    });
+
+    it("debits 0.5 vacation day for HOLIDAY_EVE FULL (other half taken as vacation)", async () => {
+      const result = await markAbsence("user1", "12-06", "HOLIDAY_EVE", "FULL");
+
+      assert.equal(mockDecrementLeaveBalance.mock.calls[0].arguments[1], "vacationBalance");
+      assert.equal(mockDecrementLeaveBalance.mock.calls[0].arguments[2], 0.5);
+      assert.equal(result.leaveDebit?.amount, 0.5);
     });
 
     it("never debits a balance for HOLIDAY (company-paid)", async () => {
@@ -673,8 +728,8 @@ describe("EditWorkdayService", async () => {
       assert.equal(result.leaveDebit, null);
     });
 
-    it("ignores a debitDays argument passed for HOLIDAY", async () => {
-      const result = await markAbsence("user1", "12-06", "HOLIDAY", 1);
+    it("never debits a balance for HOLIDAY even when a portion is passed", async () => {
+      const result = await markAbsence("user1", "12-06", "HOLIDAY", "HALF");
 
       assert.equal(mockDecrementLeaveBalance.mock.calls.length, 0);
       assert.equal(result.leaveDebit, null);
@@ -682,13 +737,13 @@ describe("EditWorkdayService", async () => {
     });
 
     it("debits sickBalance for SICK", async () => {
-      const result = await markAbsence("user1", "12-06", "SICK", 2);
+      const result = await markAbsence("user1", "12-06", "SICK", "FULL");
 
       assert.equal(mockDecrementLeaveBalance.mock.calls[0].arguments[1], "sickBalance");
       assert.deepEqual(result.leaveDebit, {
         field: "sickBalance",
-        amount: 2,
-        newBalance: SETTINGS.sickBalance - 2,
+        amount: 1,
+        newBalance: SETTINGS.sickBalance - 1,
       });
     });
 
@@ -707,7 +762,7 @@ describe("EditWorkdayService", async () => {
     });
 
     it("catches up pending leave accrual before debiting (via applyPendingLeaveAccrual, not getSettingsOrThrow)", async () => {
-      await markAbsence("user1", "12-06", "VACATION", 1);
+      await markAbsence("user1", "12-06", "VACATION", "FULL");
 
       assert.equal(mockApplyPendingLeaveAccrual.mock.calls.length, 1);
       assert.equal(mockApplyPendingLeaveAccrual.mock.calls[0].arguments[0], "user1");
@@ -716,13 +771,13 @@ describe("EditWorkdayService", async () => {
 
     describe("transactional write for debitable types", () => {
       it("wraps the record upsert and balance decrement in a single prisma.$transaction", async () => {
-        await markAbsence("user1", "12-06", "VACATION", 1);
+        await markAbsence("user1", "12-06", "VACATION", "FULL");
 
         assert.equal(mockTransaction.mock.calls.length, 1);
       });
 
       it("passes the same transaction handle to both the record upsert and the balance decrement", async () => {
-        await markAbsence("user1", "12-06", "SICK", 1);
+        await markAbsence("user1", "12-06", "SICK", "FULL");
 
         // upsertRecordByDate(input, tx) -> tx is the 2nd argument
         assert.equal(mockUpsertRecordByDate.mock.calls[0].arguments[1], FAKE_TX);
@@ -739,8 +794,8 @@ describe("EditWorkdayService", async () => {
       });
     });
 
-    describe("debitDays validation for debitable types", () => {
-      it("throws VALIDATION_ERROR when debitDays is omitted for VACATION", async () => {
+    describe("portion validation", () => {
+      it("throws VALIDATION_ERROR when portion is omitted for VACATION", async () => {
         await assert.rejects(
           () => markAbsence("user1", "12-06", "VACATION"),
           (err: unknown) => {
@@ -750,9 +805,9 @@ describe("EditWorkdayService", async () => {
         );
       });
 
-      it("throws VALIDATION_ERROR when debitDays is 0 for SICK", async () => {
+      it("throws VALIDATION_ERROR when portion is omitted for SICK", async () => {
         await assert.rejects(
-          () => markAbsence("user1", "12-06", "SICK", 0),
+          () => markAbsence("user1", "12-06", "SICK"),
           (err: unknown) => {
             assert.equal((err as { code: string }).code, "VALIDATION_ERROR");
             return true;
@@ -760,35 +815,25 @@ describe("EditWorkdayService", async () => {
         );
       });
 
-      it("throws VALIDATION_ERROR when debitDays is negative for VACATION", async () => {
-        await assert.rejects(
-          () => markAbsence("user1", "12-06", "VACATION", -1),
-          (err: unknown) => {
-            assert.equal((err as { code: string }).code, "VALIDATION_ERROR");
-            return true;
-          }
-        );
-      });
-
-      it("validates before writing — upsertRecordByDate is never called when debitDays is invalid", async () => {
+      it("validates before writing — upsertRecordByDate is never called when portion is missing", async () => {
         await assert.rejects(() => markAbsence("user1", "12-06", "VACATION"));
         assert.equal(mockUpsertRecordByDate.mock.calls.length, 0);
         assert.equal(mockDecrementLeaveBalance.mock.calls.length, 0);
       });
 
-      it("does not require debitDays for UNPAID_ABSENCE", async () => {
+      it("does not require a portion for UNPAID_ABSENCE", async () => {
         await assert.doesNotReject(() => markAbsence("user1", "12-06", "UNPAID_ABSENCE"));
       });
 
-      it("does not require debitDays for ELECTION", async () => {
+      it("does not require a portion for ELECTION", async () => {
         await assert.doesNotReject(() => markAbsence("user1", "12-06", "ELECTION"));
       });
 
-      it("does not require debitDays for HOLIDAY", async () => {
+      it("does not require a portion for HOLIDAY", async () => {
         await assert.doesNotReject(() => markAbsence("user1", "12-06", "HOLIDAY"));
       });
 
-      it("does not require debitDays for HOLIDAY_EVE", async () => {
+      it("does not require a portion for HOLIDAY_EVE", async () => {
         await assert.doesNotReject(() => markAbsence("user1", "12-06", "HOLIDAY_EVE"));
       });
     });
@@ -802,7 +847,7 @@ describe("EditWorkdayService", async () => {
         makeAbsenceRecord("VACATION", DAILY_MIN, "vacationBalance", 1)
       );
 
-      const result = await markAbsence("user1", "12-06", "SICK", 1);
+      const result = await markAbsence("user1", "12-06", "SICK", "FULL");
 
       assert.equal(mockCreditLeaveBalance.mock.calls.length, 1);
       assert.equal(mockCreditLeaveBalance.mock.calls[0].arguments[0], "user1");
@@ -830,7 +875,7 @@ describe("EditWorkdayService", async () => {
         makeAbsenceRecord("VACATION", DAILY_MIN, "vacationBalance", 1)
       );
 
-      const result = await markAbsence("user1", "12-06", "VACATION", 0.5);
+      const result = await markAbsence("user1", "12-06", "VACATION", "HALF");
 
       assert.equal(mockCreditLeaveBalance.mock.calls[0].arguments[2], 1);
       assert.equal(mockDecrementLeaveBalance.mock.calls[0].arguments[2], 0.5);
@@ -886,16 +931,16 @@ describe("EditWorkdayService", async () => {
         makeAbsenceRecord("VACATION", DAILY_MIN, "vacationBalance", 1)
       );
 
-      await markAbsence("user1", "12-06", "SICK", 2);
+      await markAbsence("user1", "12-06", "SICK", "HALF");
 
       const upsertArg = mockUpsertRecordByDate.mock.calls[0].arguments[0];
       assert.equal(upsertArg.debitedLeaveField, "sickBalance");
-      assert.equal(upsertArg.debitedLeaveDays, 2);
+      assert.equal(upsertArg.debitedLeaveDays, 0.5);
     });
 
     it("does not attempt a refund for a fresh NO_RECORD -> VACATION marking", async () => {
       // default mockFindRecordByDate returns null (NO_RECORD)
-      const result = await markAbsence("user1", "12-06", "VACATION", 1);
+      const result = await markAbsence("user1", "12-06", "VACATION", "FULL");
 
       assert.equal(mockCreditLeaveBalance.mock.calls.length, 0);
       assert.equal(result.leaveRefund, null);
@@ -908,7 +953,7 @@ describe("EditWorkdayService", async () => {
         makeAbsenceRecord("VACATION", DAILY_MIN)
       );
 
-      const result = await markAbsence("user1", "12-06", "SICK", 1);
+      const result = await markAbsence("user1", "12-06", "SICK", "FULL");
 
       assert.equal(mockCreditLeaveBalance.mock.calls.length, 0);
       assert.equal(result.leaveRefund, null);
@@ -931,7 +976,7 @@ describe("EditWorkdayService", async () => {
         makeAbsenceRecord("VACATION", DAILY_MIN, "vacationBalance", 1)
       );
 
-      await markAbsence("user1", "12-06", "SICK", 1);
+      await markAbsence("user1", "12-06", "SICK", "FULL");
 
       assert.equal(mockUpsertRecordByDate.mock.calls[0].arguments[1], FAKE_TX);
       assert.equal(mockCreditLeaveBalance.mock.calls[0].arguments[3], FAKE_TX);
@@ -963,6 +1008,11 @@ describe("EditWorkdayService", async () => {
       const upsertArg = mockUpsertRecordByDate.mock.calls[0].arguments[0];
       assert.equal(upsertArg.debitedLeaveField, null);
       assert.equal(upsertArg.debitedLeaveDays, null);
+      // The overwritten absence's credit and portion are cleared too.
+      assert.equal(upsertArg.creditedMinutes, 0);
+      assert.equal(upsertArg.absencePortion, null);
+      assert.equal(result.creditedMinutes, 0);
+      assert.equal(result.balanceMinutes, result.workedMinutes - DAILY_MIN);
     });
 
     it("does not attempt a refund when the existing record is a plain WORK record", async () => {

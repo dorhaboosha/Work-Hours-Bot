@@ -11,7 +11,8 @@ export async function handleMonth(ctx: Context): Promise<void> {
   try {
     const summary = await getMonthSummary(telegramId);
 
-    const workedStr = formatMinutesAsDuration(summary.workedMinutes);
+    // Counted time: actual work plus absence credit (leave or company-paid).
+    const workedStr = formatMinutesAsDuration(summary.workedMinutes + summary.creditedMinutes);
     const requiredStr = formatMinutesAsDuration(summary.requiredMinutes);
     const balanceStr = formatBalance(summary.balanceMinutes);
     const balanceEmoji = summary.balanceMinutes >= 0 ? "🟢" : "🔴";

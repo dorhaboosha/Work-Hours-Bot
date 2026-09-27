@@ -2,8 +2,7 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
   isAbsenceRecordType,
-  calculateCreditedMinutes,
-  getLeaveBalanceField,
+  requiresPortionChoice,
   resolveAbsenceTerms,
   canLogHours,
 } from "./recordTypeUtils";
@@ -39,67 +38,16 @@ describe("isAbsenceRecordType", () => {
   });
 });
 
-describe("calculateCreditedMinutes", () => {
-  const required = 528; // 8h 48m
-
-  it("credits a full day for SICK", () => {
-    assert.equal(calculateCreditedMinutes("SICK", required), 528);
+describe("requiresPortionChoice", () => {
+  it("returns true for VACATION and SICK", () => {
+    assert.equal(requiresPortionChoice("VACATION"), true);
+    assert.equal(requiresPortionChoice("SICK"), true);
   });
 
-  it("credits a full day for VACATION", () => {
-    assert.equal(calculateCreditedMinutes("VACATION", required), 528);
-  });
-
-  it("credits a full day for HOLIDAY", () => {
-    assert.equal(calculateCreditedMinutes("HOLIDAY", required), 528);
-  });
-
-  it("credits a full day for ELECTION", () => {
-    assert.equal(calculateCreditedMinutes("ELECTION", required), 528);
-  });
-
-  it("credits half a day (floor) for HOLIDAY_EVE", () => {
-    assert.equal(calculateCreditedMinutes("HOLIDAY_EVE", required), 264);
-  });
-
-  it("floors the half-day when dailyRequiredMinutes is odd", () => {
-    assert.equal(calculateCreditedMinutes("HOLIDAY_EVE", 529), 264);
-  });
-
-  it("credits 0 minutes for UNPAID_ABSENCE", () => {
-    assert.equal(calculateCreditedMinutes("UNPAID_ABSENCE", required), 0);
-  });
-
-  it("works correctly with a different required value", () => {
-    assert.equal(calculateCreditedMinutes("SICK", 480), 480);       // 8h exactly
-    assert.equal(calculateCreditedMinutes("HOLIDAY_EVE", 480), 240); // 4h exactly
-    assert.equal(calculateCreditedMinutes("UNPAID_ABSENCE", 480), 0);
-  });
-});
-
-describe("getLeaveBalanceField", () => {
-  it("maps VACATION to vacationBalance", () => {
-    assert.equal(getLeaveBalanceField("VACATION"), "vacationBalance");
-  });
-
-  it("maps HOLIDAY to null (company-paid, no balance debited)", () => {
-    assert.equal(getLeaveBalanceField("HOLIDAY"), null);
-  });
-
-  it("maps HOLIDAY_EVE to null (company-paid, no balance debited)", () => {
-    assert.equal(getLeaveBalanceField("HOLIDAY_EVE"), null);
-  });
-
-  it("maps SICK to sickBalance", () => {
-    assert.equal(getLeaveBalanceField("SICK"), "sickBalance");
-  });
-
-  it("maps UNPAID_ABSENCE to null (no balance debited)", () => {
-    assert.equal(getLeaveBalanceField("UNPAID_ABSENCE"), null);
-  });
-
-  it("maps ELECTION to null (no balance debited)", () => {
-    assert.equal(getLeaveBalanceField("ELECTION"), null);
+  it("returns false for types with a fixed portion", () => {
+    for (const type of ["HOLIDAY", "HOLIDAY_EVE", "ELECTION", "UNPAID_ABSENCE"] as const) {
+      assert.equal(requiresPortionChoice(type), false);
+    }
   });
 });
 
@@ -141,19 +89,6 @@ describe("resolveAbsenceTerms", () => {
   it("floors half a day for an odd number of required minutes", () => {
     assert.equal(resolveAbsenceTerms("VACATION", "HALF", 529).creditedMinutes, 264);
     assert.equal(resolveAbsenceTerms("HOLIDAY_EVE", "HALF", 529).creditedMinutes, 264);
-  });
-
-  it("matches the existing credit rule for full-day absences and the default HOLIDAY_EVE", () => {
-    for (const type of ["SICK", "VACATION", "HOLIDAY", "ELECTION", "UNPAID_ABSENCE"] as const) {
-      assert.equal(
-        resolveAbsenceTerms(type, "FULL", required).creditedMinutes,
-        calculateCreditedMinutes(type, required)
-      );
-    }
-    assert.equal(
-      resolveAbsenceTerms("HOLIDAY_EVE", "HALF", required).creditedMinutes,
-      calculateCreditedMinutes("HOLIDAY_EVE", required)
-    );
   });
 });
 
