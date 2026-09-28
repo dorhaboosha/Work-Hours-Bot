@@ -12,6 +12,7 @@ import type { DailyRecord } from "@shared/types/CoreTypes";
 import type { EditDayOptions, EditWorkdayResult } from "@shared/types/ViewTypes";
 import type { EditRecordState, EditAction, DailyRecordType, AbsenceRecordType, AbsencePortion } from "@shared/types/CoreTypes";
 import { requiresPortionChoice, resolveAbsenceTerms } from "@shared/utils/recordTypeUtils";
+import { requiredMinutesFor } from "@/utils/requiredMinutes";
 
 /** Derives the EditRecordState from the raw Prisma record. */
 function resolveState(record: PrismaRecord | null): EditRecordState {
@@ -172,10 +173,10 @@ function toUtcTimeRange(
 /** Expected end of a session: start + whatever the absence credit doesn't cover. */
 function calcSessionExpectedEnd(
   startTime: Date,
-  dailyRequiredMinutes: number,
+  requiredMinutes: number,
   creditedMinutes: number
 ): Date {
-  return calcExpectedEndTime(startTime, Math.max(0, dailyRequiredMinutes - creditedMinutes));
+  return calcExpectedEndTime(startTime, Math.max(0, requiredMinutes - creditedMinutes));
 }
 
 // ── Action: SET_END_HOUR ──────────────────────────────────────────────────────
@@ -223,7 +224,7 @@ export async function setEndHour(
 
   const updated = await updateDailyRecord(record!.id, { endTime: endTimeUtc, workedMinutes });
 
-  return toEditWorkdayResult(updated, workDateStr, ddMm, settings.dailyRequiredMinutes);
+  return toEditWorkdayResult(updated, workDateStr, ddMm, requiredMinutesFor(settings, workDateStr));
 }
 
 // ── Action: SET_START_AND_END_HOURS ───────────────────────────────────────────
@@ -231,7 +232,8 @@ export async function setEndHour(
 /**
  * Creates or replaces the record for the edited date as a closed WORK record
  * with the given start and end times (applied to the edited date, not today).
- * `expectedEndTime` is calculated as startTime + dailyRequiredMinutes.
+ * `expectedEndTime` is calculated as startTime + the date's required minutes
+ * (see requiredMinutesFor).
  *
  * Allowed in all states (NO_RECORD, OPEN_WORK_RECORD, CLOSED_WORK_RECORD, ABSENCE_RECORD).
  *
@@ -252,6 +254,7 @@ export async function setStartAndEndHours(
   const settings = await applyPendingLeaveAccrual(telegramId);
   const workDateStr = resolveDdMmToDate(ddMm, settings.timezone);
   const workDate = localDateToUtcMidnight(workDateStr);
+  const requiredMinutes = requiredMinutesFor(settings, workDateStr);
 
   const existingRecord = await findRecordByDate(telegramId, workDate);
   assertActionAllowed(resolveState(existingRecord), "SET_START_AND_END_HOURS");
@@ -262,7 +265,7 @@ export async function setStartAndEndHours(
     endTimeHhMm,
     settings.timezone
   );
-  const expectedEndTimeUtc = calcExpectedEndTime(startTimeUtc, settings.dailyRequiredMinutes);
+  const expectedEndTimeUtc = calcExpectedEndTime(startTimeUtc, requiredMinutes);
   const workedMinutes = calcWorkedMinutes(startTimeUtc, endTimeUtc);
 
   const previousField = (existingRecord?.debitedLeaveField ?? null) as LeaveBalanceField | null;
@@ -310,7 +313,7 @@ export async function setStartAndEndHours(
   }
 
   return {
-    ...toEditWorkdayResult(saved, workDateStr, ddMm, settings.dailyRequiredMinutes),
+    ...toEditWorkdayResult(saved, workDateStr, ddMm, requiredMinutes),
     leaveRefund,
   };
 }
@@ -321,7 +324,7 @@ export async function setStartAndEndHours(
  * Sets the worked hours on a half-day absence (e.g. the worked half of a
  * ½ vacation day or a holiday eve), replacing any hours already logged.
  * The absence, its credit and its leave debit are kept untouched.
- * expectedEndTime is start + (dailyRequiredMinutes − creditedMinutes).
+ * expectedEndTime is start + (the date's required minutes − creditedMinutes).
  *
  * Throws:
  * - INVALID_TIME_FORMAT / INVALID_TIME_RANGE – bad times.
@@ -339,6 +342,8 @@ export async function setHoursOnHalfDay(
   const workDateStr = resolveDdMmToDate(ddMm, settings.timezone);
   const workDate = localDateToUtcMidnight(workDateStr);
 
+  const requiredMinutes = requiredMinutesFor(settings, workDateStr);
+
   const record = await findRecordByDate(telegramId, workDate);
   assertActionAllowed(resolveState(record), "LOG_HOURS");
 
@@ -352,16 +357,12 @@ export async function setHoursOnHalfDay(
   // record is guaranteed non-null and a half-day absence at this point
   const updated = await updateDailyRecord(record!.id, {
     startTime: startTimeUtc,
-    expectedEndTime: calcSessionExpectedEnd(
-      startTimeUtc,
-      settings.dailyRequiredMinutes,
-      record!.creditedMinutes
-    ),
+    expectedEndTime: calcSessionExpectedEnd(startTimeUtc, requiredMinutes, record!.creditedMinutes),
     endTime: endTimeUtc,
     workedMinutes: calcWorkedMinutes(startTimeUtc, endTimeUtc),
   });
 
-  return toEditWorkdayResult(updated, workDateStr, ddMm, settings.dailyRequiredMinutes);
+  return toEditWorkdayResult(updated, workDateStr, ddMm, requiredMinutes);
 }
 
 // ── Action: MARK_ABSENCE ──────────────────────────────────────────────────────
@@ -370,7 +371,8 @@ export async function setHoursOnHalfDay(
  * Creates or replaces the record for the edited date as an absence record.
  * What the absence credits and debits comes from
  * resolveAbsenceTerms (the single source of truth for the rules):
- *   - creditedMinutes: full or half of dailyRequiredMinutes (0 for UNPAID_ABSENCE)
+ *   - creditedMinutes: full or half of the date's required minutes (see
+ *     requiredMinutesFor; 0 for UNPAID_ABSENCE)
  *   - debit: VACATION/SICK debit 1 or 0.5 day of their balance; HOLIDAY_EVE
  *     FULL debits 0.5 vacation; other types debit nothing.
  *
@@ -415,11 +417,12 @@ export async function markAbsence(
   const settings = await applyPendingLeaveAccrual(telegramId);
   const workDateStr = resolveDdMmToDate(ddMm, settings.timezone);
   const workDate = localDateToUtcMidnight(workDateStr);
+  const requiredMinutes = requiredMinutesFor(settings, workDateStr);
 
   const terms = resolveAbsenceTerms(
     absenceType,
     portion ?? (absenceType === "HOLIDAY_EVE" ? "HALF" : "FULL"),
-    settings.dailyRequiredMinutes
+    requiredMinutes
   );
   const balanceField = terms.debitField;
   const debitDays = terms.debitDays;
@@ -441,7 +444,7 @@ export async function markAbsence(
     absencePortion: terms.portion,
     startTime: keptStartTime,
     expectedEndTime: keepHours
-      ? calcSessionExpectedEnd(keptStartTime, settings.dailyRequiredMinutes, terms.creditedMinutes)
+      ? calcSessionExpectedEnd(keptStartTime, requiredMinutes, terms.creditedMinutes)
       : null,
     endTime: keepHours ? existingRecord!.endTime : null,
     // null while a kept session is still open, like any open session.
@@ -509,7 +512,7 @@ export async function markAbsence(
   }
 
   return {
-    ...toEditWorkdayResult(saved, workDateStr, ddMm, settings.dailyRequiredMinutes),
+    ...toEditWorkdayResult(saved, workDateStr, ddMm, requiredMinutes),
     leaveDebit,
     leaveRefund,
   };

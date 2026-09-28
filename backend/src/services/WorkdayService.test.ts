@@ -28,6 +28,7 @@ const SETTINGS = {
   id: "s1",
   telegramId: "user1",
   dailyRequiredMinutes: 480,
+  cholHamoedRequiredMinutes: null as number | null,
   timezone: FIXED_TIMEZONE,
   workdays: [0, 1, 2, 3, 4],
   createdAt: new Date(),
@@ -363,6 +364,7 @@ describe("WorkdayService", async () => {
 
       assert.equal(status.workDate, FIXED_TODAY);
       assert.equal(status.isActive, true);
+      assert.equal(status.requiredMinutes, SETTINGS.dailyRequiredMinutes);
       assert.ok(typeof status.workedMinutesSoFar === "number");
       assert.ok(status.workedMinutesSoFar >= 0);
     });
@@ -672,6 +674,79 @@ describe("WorkdayService", async () => {
 
       await assert.rejects(() => getDateRecord("user1", "12-06"));
       assert.equal(mockFindRecordByDate.mock.calls.length, 0);
+    });
+  });
+
+  // ── Chol HaMoed hours ─────────────────────────────────────────────────────────
+
+  describe("Chol HaMoed hours", () => {
+    const CHOL_HAMOED_TODAY = "2026-09-28"; // 17 Tishri
+    const CHOL_HAMOED_WORK_DATE = new Date(`${CHOL_HAMOED_TODAY}T00:00:00Z`);
+    const CH_SETTINGS = { ...SETTINGS, cholHamoedRequiredMinutes: 420 };
+
+    function makeChOpenRecord(overrides: Record<string, unknown> = {}) {
+      return { ...makeTodayOpenRecord(), workDate: CHOL_HAMOED_WORK_DATE, ...overrides };
+    }
+
+    it("startWorkday sets expectedEndTime = startTime + the Chol HaMoed hours", async () => {
+      mockGetLocalDate.mock.mockImplementationOnce(() => CHOL_HAMOED_TODAY);
+
+      await startWorkday("user1", CH_SETTINGS);
+
+      const arg = mockCreateDailyRecord.mock.calls[0].arguments[0];
+      assert.equal(Math.round((arg.expectedEndTime.getTime() - arg.startTime.getTime()) / 60_000), 420);
+    });
+
+    it("startWorkday uses the normal hours on Chol HaMoed when no override is set", async () => {
+      mockGetLocalDate.mock.mockImplementationOnce(() => CHOL_HAMOED_TODAY);
+
+      await startWorkday("user1", SETTINGS);
+
+      const arg = mockCreateDailyRecord.mock.calls[0].arguments[0];
+      assert.equal(Math.round((arg.expectedEndTime.getTime() - arg.startTime.getTime()) / 60_000), 480);
+    });
+
+    it("startWorkday on a Chol HaMoed half day covers only the Chol HaMoed hours minus the credit", async () => {
+      mockGetLocalDate.mock.mockImplementationOnce(() => CHOL_HAMOED_TODAY);
+      const halfDay = {
+        ...makeChOpenRecord({ startTime: null, expectedEndTime: null }),
+        recordType: "VACATION",
+        absencePortion: "HALF",
+        workedMinutes: 0,
+        creditedMinutes: 210,
+      };
+      mockFindRecordByDate.mock.mockImplementationOnce(async () => halfDay);
+      mockUpdateDailyRecord.mock.mockImplementationOnce(
+        async (id: string, input: Record<string, unknown>) => ({ ...halfDay, id, ...input })
+      );
+
+      await startWorkday("user1", CH_SETTINGS);
+
+      const input = mockUpdateDailyRecord.mock.calls[0].arguments[1];
+      assert.equal(
+        Math.round((input.expectedEndTime.getTime() - input.startTime.getTime()) / 60_000),
+        420 - 210
+      );
+    });
+
+    it("getTodayStatus returns the Chol HaMoed hours as requiredMinutes", async () => {
+      mockGetLocalDate.mock.mockImplementationOnce(() => CHOL_HAMOED_TODAY);
+      mockFindOpenWorkRecord.mock.mockImplementationOnce(async () => makeChOpenRecord());
+
+      const status = await getTodayStatus("user1", CH_SETTINGS);
+
+      assert.equal(status.requiredMinutes, 420);
+      assert.equal(status.remainingMinutes, 420 - status.workedMinutesSoFar);
+    });
+
+    it("endWorkday computes the balance against the Chol HaMoed hours", async () => {
+      mockGetLocalDate.mock.mockImplementationOnce(() => CHOL_HAMOED_TODAY);
+      mockFindOpenWorkRecord.mock.mockImplementationOnce(async () => makeChOpenRecord());
+
+      const result = await endWorkday("user1", CH_SETTINGS);
+
+      assert.equal(result.requiredMinutes, 420);
+      assert.equal(result.balanceMinutes, result.workedMinutes - 420);
     });
   });
 });

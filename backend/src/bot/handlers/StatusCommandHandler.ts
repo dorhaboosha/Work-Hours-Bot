@@ -17,9 +17,9 @@ export async function handleStatus(ctx: Context): Promise<void> {
     const endStr = formatTime(status.expectedEndTime, settings.timezone);
     const workedStr = formatMinutesAsDuration(status.workedMinutesSoFar);
     const remainingStr = formatMinutesAsDuration(status.remainingMinutes);
-    const requiredStr = formatMinutesAsDuration(settings.dailyRequiredMinutes);
+    const requiredStr = formatMinutesAsDuration(status.requiredMinutes);
     const balanceStr = formatBalance(
-      status.workedMinutesSoFar + status.creditedMinutes - settings.dailyRequiredMinutes
+      status.workedMinutesSoFar + status.creditedMinutes - status.requiredMinutes
     );
 
     const creditedLine =

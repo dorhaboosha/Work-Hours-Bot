@@ -23,6 +23,8 @@ export interface WorkdayStatus {
   workedMinutesSoFar: number;
   /** Minutes already credited to the day by a half-day absence (0 on a regular workday) */
   creditedMinutes: number;
+  /** The day's required minutes (reduced on Chol HaMoed when the user set those hours) */
+  requiredMinutes: number;
   /** Integer >= 0, clamped to 0 when worked + credited already meets the required minutes */
   remainingMinutes: number;
   isActive: boolean;
