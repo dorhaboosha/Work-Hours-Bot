@@ -7,6 +7,8 @@ import { calcWorkedMinutesSoFar } from "@/services/TimeCalculationService";
 import { AppError } from "@/utils/AppError";
 import type { WorkSummary } from "@shared/types/ViewTypes";
 import { getWeekWindow, getMonthWindow } from "@/utils/dateRangeUtils";
+import { requiredMinutesFor } from "@/utils/requiredMinutes";
+import type { RequiredMinutesSettings } from "@/utils/requiredMinutes";
 
 // ── Aggregation ───────────────────────────────────────────────────────────────
 
@@ -22,7 +24,9 @@ interface AggregateResult {
  * Aggregates totals across a list of expected workday dates, crediting each
  * absence type correctly per §3.10 of the spec:
  *
- * - **Required minutes** = number of configured workdays × `dailyRequiredMinutes` (always full).
+ * - **Required minutes** = sum of each workday's full required minutes
+ *   (`requiredMinutesFor`: the Chol HaMoed hours on Chol HaMoed days when
+ *   set, otherwise `dailyRequiredMinutes`).
  * - **Each record** contributes its actual `workedMinutes` to worked and its
  *   `creditedMinutes` (snapshotted by `MARK_ABSENCE`, see resolveAbsenceTerms)
  *   to credited. A half-day absence can contribute to both.
@@ -36,7 +40,7 @@ interface AggregateResult {
 export function aggregateSummary(
   workdayDates: string[],
   records: DailyRecord[],
-  dailyRequiredMinutes: number,
+  settings: RequiredMinutesSettings,
   timezone: string
 ): AggregateResult {
   // Build lookup: local date string → record
@@ -45,18 +49,19 @@ export function aggregateSummary(
     byDate.set(utcToLocalDate(rec.workDate, timezone), rec);
   }
 
+  let requiredMinutes = 0;
   let workedMinutes = 0;
   let creditedMinutes = 0;
 
   for (const date of workdayDates) {
     const rec = byDate.get(date);
+    requiredMinutes += requiredMinutesFor(settings, date);
     // Missing days contribute 0 to both.
     workedMinutes += rec?.workedMinutes ?? 0;
     creditedMinutes += rec?.creditedMinutes ?? 0;
   }
 
   const workdaysCount = workdayDates.length;
-  const requiredMinutes = workdaysCount * dailyRequiredMinutes;
   const balanceMinutes = workedMinutes + creditedMinutes - requiredMinutes;
 
   return { workdaysCount, requiredMinutes, workedMinutes, creditedMinutes, balanceMinutes };
@@ -156,7 +161,7 @@ async function buildSummary<W extends { workdayDates: string[] }>(
   const totals = aggregateSummary(
     win.workdayDates,
     records,
-    settings.dailyRequiredMinutes,
+    settings,
     settings.timezone
   );
 
