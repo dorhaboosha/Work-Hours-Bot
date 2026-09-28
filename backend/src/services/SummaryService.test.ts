@@ -40,10 +40,14 @@ const WEEK_DATES = [
   "2026-06-11",
 ];
 
+// Required-hours settings passed to aggregateSummary: no Chol HaMoed override.
+const REQUIRED = { dailyRequiredMinutes: DAILY_MIN, cholHamoedRequiredMinutes: null };
+
 const SETTINGS = {
   id: "s1",
   telegramId: "u1",
   dailyRequiredMinutes: DAILY_MIN,
+  cholHamoedRequiredMinutes: null,
   timezone: TIMEZONE,
   workdays: [0, 1, 2, 3, 4],
   createdAt: new Date(),
@@ -267,7 +271,7 @@ describe("SummaryService", async () => {
   describe("aggregateSummary", () => {
     it("sums workedMinutes across all closed records", () => {
       const records = WEEK_DATES.map((d) => makeClosedRecord(d, 480));
-      const result = aggregateSummary(WEEK_DATES, records, DAILY_MIN, TIMEZONE);
+      const result = aggregateSummary(WEEK_DATES, records, REQUIRED, TIMEZONE);
       assert.equal(result.workdaysCount, 5);
       assert.equal(result.requiredMinutes, 2400);
       assert.equal(result.workedMinutes, 2400);
@@ -276,7 +280,7 @@ describe("SummaryService", async () => {
 
     it("counts missing days as 0 worked", () => {
       const records = WEEK_DATES.slice(0, 3).map((d) => makeClosedRecord(d, 480));
-      const result = aggregateSummary(WEEK_DATES, records, DAILY_MIN, TIMEZONE);
+      const result = aggregateSummary(WEEK_DATES, records, REQUIRED, TIMEZONE);
       assert.equal(result.workedMinutes, 3 * 480);
       assert.equal(result.balanceMinutes, -2 * 480);
     });
@@ -287,7 +291,7 @@ describe("SummaryService", async () => {
       const result = aggregateSummary(
         WEEK_DATES,
         [...closed, enrichedOpen],
-        DAILY_MIN,
+        REQUIRED,
         TIMEZONE
       );
       assert.equal(result.workedMinutes, 4 * 480 + 120);
@@ -295,16 +299,51 @@ describe("SummaryService", async () => {
     });
 
     it("returns zero worked and negative balance when no records exist", () => {
-      const result = aggregateSummary(WEEK_DATES, [], DAILY_MIN, TIMEZONE);
+      const result = aggregateSummary(WEEK_DATES, [], REQUIRED, TIMEZONE);
       assert.equal(result.workedMinutes, 0);
       assert.equal(result.balanceMinutes, -5 * DAILY_MIN);
     });
 
     it("returns all zeros for an empty workdayDates list", () => {
-      const result = aggregateSummary([], [], DAILY_MIN, TIMEZONE);
+      const result = aggregateSummary([], [], REQUIRED, TIMEZONE);
       assert.equal(result.workdaysCount, 0);
       assert.equal(result.requiredMinutes, 0);
       assert.equal(result.workedMinutes, 0);
+    });
+  });
+
+  // ── aggregateSummary – Chol HaMoed hours ──────────────────────────────────────
+
+  describe("aggregateSummary – Chol HaMoed hours", () => {
+    const CHOL_HAMOED_MIN = 420;
+    const WITH_OVERRIDE = { dailyRequiredMinutes: DAILY_MIN, cholHamoedRequiredMinutes: CHOL_HAMOED_MIN };
+    // Sun–Thu of Sukkot 2026 — all Chol HaMoed (16–20 Tishri).
+    const SUKKOT_WEEK = ["2026-09-27", "2026-09-28", "2026-09-29", "2026-09-30", "2026-10-01"];
+    // Sun–Thu of Pesach 2027: 25–27 Apr are Chol HaMoed, 28 Apr is the 7th
+    // day of Pesach (a holiday, not Chol HaMoed), 29 Apr is an ordinary day.
+    const MIXED_WEEK = ["2027-04-25", "2027-04-26", "2027-04-27", "2027-04-28", "2027-04-29"];
+
+    it("requires the Chol HaMoed hours on every Chol HaMoed day", () => {
+      const r = aggregateSummary(SUKKOT_WEEK, [], WITH_OVERRIDE, TIMEZONE);
+      assert.equal(r.requiredMinutes, 5 * CHOL_HAMOED_MIN);
+    });
+
+    it("mixes Chol HaMoed and normal days in the same week", () => {
+      const r = aggregateSummary(MIXED_WEEK, [], WITH_OVERRIDE, TIMEZONE);
+      assert.equal(r.requiredMinutes, 3 * CHOL_HAMOED_MIN + 2 * DAILY_MIN);
+    });
+
+    it("gives a positive balance for a day worked longer than the Chol HaMoed hours", () => {
+      // 8h worked on the first day against 7h required → +1h.
+      const records = [makeClosedRecord(SUKKOT_WEEK[0], 480)];
+      const r = aggregateSummary(SUKKOT_WEEK.slice(0, 1), records, WITH_OVERRIDE, TIMEZONE);
+      assert.equal(r.requiredMinutes, CHOL_HAMOED_MIN);
+      assert.equal(r.balanceMinutes, 480 - CHOL_HAMOED_MIN);
+    });
+
+    it("uses the normal daily hours on Chol HaMoed when no override is set", () => {
+      const r = aggregateSummary(SUKKOT_WEEK, [], REQUIRED, TIMEZONE);
+      assert.equal(r.requiredMinutes, 5 * DAILY_MIN);
     });
   });
 
@@ -316,7 +355,7 @@ describe("SummaryService", async () => {
         makeAbsenceRecord(WEEK_DATES[0], "SICK", DAILY_MIN),
         ...WEEK_DATES.slice(1).map((d) => makeClosedRecord(d, DAILY_MIN)),
       ];
-      const r = aggregateSummary(WEEK_DATES, records, DAILY_MIN, TIMEZONE);
+      const r = aggregateSummary(WEEK_DATES, records, REQUIRED, TIMEZONE);
       // 1 SICK day: +DAILY_MIN credited, +DAILY_MIN required
       // 4 WORK days: +DAILY_MIN worked each
       assert.equal(r.workedMinutes, 4 * DAILY_MIN);
@@ -330,7 +369,7 @@ describe("SummaryService", async () => {
         makeAbsenceRecord(WEEK_DATES[0], "VACATION", DAILY_MIN),
         ...WEEK_DATES.slice(1).map((d) => makeClosedRecord(d, DAILY_MIN)),
       ];
-      const r = aggregateSummary(WEEK_DATES, records, DAILY_MIN, TIMEZONE);
+      const r = aggregateSummary(WEEK_DATES, records, REQUIRED, TIMEZONE);
       assert.equal(r.workedMinutes, 4 * DAILY_MIN);
       assert.equal(r.creditedMinutes, DAILY_MIN);
       assert.equal(r.balanceMinutes, 0);
@@ -342,7 +381,7 @@ describe("SummaryService", async () => {
         makeAbsenceRecord(WEEK_DATES[0], "HOLIDAY_EVE", halfCredit),
         ...WEEK_DATES.slice(1).map((d) => makeClosedRecord(d, DAILY_MIN)),
       ];
-      const r = aggregateSummary(WEEK_DATES, records, DAILY_MIN, TIMEZONE);
+      const r = aggregateSummary(WEEK_DATES, records, REQUIRED, TIMEZONE);
       assert.equal(r.workedMinutes,   4 * DAILY_MIN);              // 1920
       assert.equal(r.creditedMinutes, halfCredit);                 // 240
       assert.equal(r.requiredMinutes, 5 * DAILY_MIN);              // always full per workday = 2400
@@ -354,7 +393,7 @@ describe("SummaryService", async () => {
         makeAbsenceRecord(WEEK_DATES[0], "UNPAID_ABSENCE", 0),
         ...WEEK_DATES.slice(1).map((d) => makeClosedRecord(d, DAILY_MIN)),
       ];
-      const r = aggregateSummary(WEEK_DATES, records, DAILY_MIN, TIMEZONE);
+      const r = aggregateSummary(WEEK_DATES, records, REQUIRED, TIMEZONE);
       assert.equal(r.workedMinutes,   4 * DAILY_MIN);  // 0 + 4×480 = 1920
       assert.equal(r.creditedMinutes, 0);
       assert.equal(r.requiredMinutes, 5 * DAILY_MIN);  // always full per workday = 2400
@@ -371,7 +410,7 @@ describe("SummaryService", async () => {
         // WEEK_DATES[4] missing:                                       // MISS:  +0
         // required = 5 × DAILY_MIN for all 5 workdays
       ];
-      const r = aggregateSummary(WEEK_DATES, records, DAILY_MIN, TIMEZONE);
+      const r = aggregateSummary(WEEK_DATES, records, REQUIRED, TIMEZONE);
 
       const expectedWorked   = DAILY_MIN;              // 480
       const expectedCredited = DAILY_MIN + halfCredit; // 720
@@ -390,7 +429,7 @@ describe("SummaryService", async () => {
         makeAbsenceRecord(WEEK_DATES[0], "VACATION", halfCredit, "HALF", 240),
         ...WEEK_DATES.slice(1).map((d) => makeClosedRecord(d, DAILY_MIN)),
       ];
-      const r = aggregateSummary(WEEK_DATES, records, DAILY_MIN, TIMEZONE);
+      const r = aggregateSummary(WEEK_DATES, records, REQUIRED, TIMEZONE);
       assert.equal(r.workedMinutes,   4 * DAILY_MIN + 240);
       assert.equal(r.creditedMinutes, halfCredit);
       assert.equal(r.balanceMinutes,  0);

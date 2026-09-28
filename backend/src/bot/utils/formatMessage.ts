@@ -1,4 +1,7 @@
 import { utcToLocalTime } from "@/utils/DateUtils";
+import type { UserSettings } from "@/generated/prisma/client";
+import type { Weekday } from "@shared/types/CoreTypes";
+import { t, formatWorkdays } from "@/i18n";
 import {
   formatMinutesAsDuration,
   formatBalance,
@@ -14,6 +17,21 @@ export { formatMinutesAsDuration, formatBalance, formatDecimalDays };
  */
 export function formatTime(utc: Date | string, timezone: string): string {
   return utcToLocalTime(utc, timezone);
+}
+
+/** Renders the settings block shown by /settings, /settings_edit and /setup. */
+export function formatSettingsDisplay(settings: UserSettings): string {
+  return t("settings.display", {
+    dailyHoursStr: formatMinutesAsDuration(settings.dailyRequiredMinutes),
+    cholHamoedHoursStr:
+      settings.cholHamoedRequiredMinutes === null
+        ? t("settings.cholHamoedSameAsDaily")
+        : formatMinutesAsDuration(settings.cholHamoedRequiredMinutes),
+    workdaysStr: formatWorkdays(settings.workdays as Weekday[]),
+    timezone: settings.timezone,
+    vacationRateStr: formatDecimalDays(settings.vacationAccrualRate),
+    sickRateStr: formatDecimalDays(settings.sickAccrualRate),
+  });
 }
 
 /** Maps a leave balance field to its short display label for bot messages. */

@@ -6,8 +6,8 @@ import {
   DEFAULT_VACATION_ACCRUAL_RATE,
   DEFAULT_SICK_ACCRUAL_RATE,
 } from "@/services/SettingsService";
-import { formatMinutesAsDuration, formatDecimalDays } from "@/bot/utils/formatMessage";
-import { t, formatWorkdays } from "@/i18n";
+import { formatSettingsDisplay } from "@/bot/utils/formatMessage";
+import { t } from "@/i18n";
 import { handleBotError } from "@/bot/utils/handleBotError";
 import type { Weekday } from "@shared/types/CoreTypes";
 import { PREDEFINED_TIMEZONES } from "@/constants/timezones";
@@ -143,17 +143,7 @@ async function completeSetup(
       sickAccrualRate: data.sickAccrualRate,
     });
 
-    const dailyHoursStr = formatMinutesAsDuration(settings.dailyRequiredMinutes);
-    const workdaysStr = formatWorkdays(settings.workdays as Weekday[]);
-    const vacationRateStr = formatDecimalDays(settings.vacationAccrualRate);
-    const sickRateStr = formatDecimalDays(settings.sickAccrualRate);
-    const settingsBlock = t("settings.display", {
-      dailyHoursStr,
-      workdaysStr,
-      timezone: settings.timezone,
-      vacationRateStr,
-      sickRateStr,
-    });
+    const settingsBlock = formatSettingsDisplay(settings);
 
     await ctx.reply(
       t("setup.complete", { settings: settingsBlock }),

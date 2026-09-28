@@ -30,6 +30,7 @@ const SETTINGS = {
   id: "s1",
   telegramId: "user1",
   dailyRequiredMinutes: DAILY_MIN,
+  cholHamoedRequiredMinutes: null as number | null,
   timezone: TIMEZONE,
   workdays: [0, 1, 2, 3, 4],
   vacationAccrualRate: 1,
@@ -137,6 +138,10 @@ describe("EditWorkdayService", async () => {
   }
   resetCurrentBalances();
 
+  // The date resolveDdMmToDate returns. Tests may point it elsewhere (e.g. a
+  // Chol HaMoed day); reset to FIXED_DATE in afterEach.
+  let editedDate = FIXED_DATE;
+
   before(() => {
     mockFindRecordByDate = mock.fn(async () => null); // default → NO_RECORD state
     mockUpdateDailyRecord = mock.fn(
@@ -240,7 +245,7 @@ describe("EditWorkdayService", async () => {
       manualEndTimeToUtc: realDateUtils.manualEndTimeToUtc,
       localTimeToUtc:     realDateUtils.localTimeToUtc,
       localDateToUtcMidnight: realDateUtils.localDateToUtcMidnight,
-      resolveDdMmToDate:  () => FIXED_DATE, // deterministic, avoids year dependency
+      resolveDdMmToDate:  () => editedDate, // deterministic, avoids year dependency
     });
 
     // Evict TimeCalculationService so it re-loads against the fresh DateUtils stub
@@ -274,6 +279,7 @@ describe("EditWorkdayService", async () => {
     mockCreditLeaveBalance?.mock.resetCalls();
     mockTransaction?.mock.resetCalls();
     resetCurrentBalances();
+    editedDate = FIXED_DATE;
   });
 
   // ── assertActionAllowed ───────────────────────────────────────────────────────
@@ -1307,6 +1313,85 @@ describe("EditWorkdayService", async () => {
       const upsertArg = mockUpsertRecordByDate.mock.calls[0].arguments[0];
       assert.equal(upsertArg.absencePortion, null);
       assert.equal(upsertArg.creditedMinutes, 0);
+    });
+  });
+
+  // ── Chol HaMoed hours ─────────────────────────────────────────────────────────
+
+  describe("Chol HaMoed hours", () => {
+    const CH_DATE = "2026-09-28"; // 17 Tishri
+    const CH_MIN = 420;
+    const CH_SETTINGS = { ...SETTINGS, cholHamoedRequiredMinutes: CH_MIN };
+
+    function onChDate(settings: typeof SETTINGS = CH_SETTINGS) {
+      editedDate = CH_DATE;
+      mockGetSettingsOrThrow.mock.mockImplementationOnce(async () => settings);
+      mockApplyPendingLeaveAccrual.mock.mockImplementationOnce(async () => settings);
+    }
+
+    it("markAbsence credits a full vacation day as the Chol HaMoed hours and still debits 1 day", async () => {
+      onChDate();
+
+      const result = await markAbsence("user1", "28-09", "VACATION", "FULL");
+
+      assert.equal(result.creditedMinutes, CH_MIN);
+      assert.equal(result.requiredMinutes, CH_MIN);
+      assert.equal(result.balanceMinutes, 0);
+      assert.equal(result.leaveDebit.amount, 1);
+    });
+
+    it("markAbsence credits a half vacation day as half the Chol HaMoed hours", async () => {
+      onChDate();
+
+      const result = await markAbsence("user1", "28-09", "VACATION", "HALF");
+
+      assert.equal(result.creditedMinutes, CH_MIN / 2);
+      assert.equal(result.leaveDebit.amount, 0.5);
+    });
+
+    it("markAbsence uses the normal hours on Chol HaMoed when no override is set", async () => {
+      onChDate(SETTINGS);
+
+      const result = await markAbsence("user1", "28-09", "VACATION", "FULL");
+
+      assert.equal(result.creditedMinutes, DAILY_MIN);
+    });
+
+    it("setStartAndEndHours computes expectedEndTime and balance from the Chol HaMoed hours", async () => {
+      onChDate();
+
+      // 09:00–17:00 Jerusalem = 8h worked against 7h required.
+      const result = await setStartAndEndHours("user1", "28-09", "09:00", "17:00");
+
+      const input = mockUpsertRecordByDate.mock.calls[0].arguments[0];
+      assert.equal((input.expectedEndTime.getTime() - input.startTime.getTime()) / 60_000, CH_MIN);
+      assert.equal(result.requiredMinutes, CH_MIN);
+      assert.equal(result.balanceMinutes, 480 - CH_MIN);
+    });
+
+    it("setEndHour reports the Chol HaMoed hours as requiredMinutes", async () => {
+      onChDate();
+      mockFindRecordByDate.mock.mockImplementationOnce(async () => makeWorkRecord(false));
+
+      const result = await setEndHour("user1", "28-09", "17:00");
+
+      assert.equal(result.requiredMinutes, CH_MIN);
+    });
+
+    it("setHoursOnHalfDay covers the Chol HaMoed hours minus the half-day credit", async () => {
+      onChDate();
+      const record = { ...makeHalfVacation("none"), creditedMinutes: CH_MIN / 2 };
+      mockFindRecordByDate.mock.mockImplementationOnce(async () => record);
+      mockUpdateDailyRecord.mock.mockImplementationOnce(
+        async (_id: string, updates: Record<string, unknown>) => ({ ...record, ...updates })
+      );
+
+      const result = await setHoursOnHalfDay("user1", "28-09", "13:00", "16:30");
+
+      const updates = mockUpdateDailyRecord.mock.calls[0].arguments[1];
+      assert.equal((updates.expectedEndTime.getTime() - updates.startTime.getTime()) / 60_000, CH_MIN / 2);
+      assert.equal(result.requiredMinutes, CH_MIN);
+      assert.equal(result.balanceMinutes, 0); // 210 worked + 210 credited − 420
     });
   });
 });

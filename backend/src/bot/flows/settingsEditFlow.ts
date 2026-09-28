@@ -2,8 +2,8 @@ import type { Context } from "telegraf";
 import { SessionStore } from "@/bot/session/SessionStore";
 import type { Session } from "@/bot/session/SessionStore";
 import { updateSettings, getSettingsOrThrow } from "@/services/SettingsService";
-import { formatMinutesAsDuration, formatDecimalDays } from "@/bot/utils/formatMessage";
-import { t, formatWorkdays } from "@/i18n";
+import { formatSettingsDisplay } from "@/bot/utils/formatMessage";
+import { t } from "@/i18n";
 import { handleBotError } from "@/bot/utils/handleBotError";
 import { decimalHoursToMinutes } from "@shared/utils/timeUtils";
 import { isMultipleOfHalf } from "@shared/utils/numberUtils";
@@ -49,6 +49,9 @@ export async function handleSettingsEditStep(
       } else if (text === "7") {
         SessionStore.set(userId, { step: "settings_edit:sick_balance", data: {} });
         await ctx.reply(t("settingsEdit.askSickBalance"), { parse_mode: "Markdown" });
+      } else if (text === "8") {
+        SessionStore.set(userId, { step: "settings_edit:chol_hamoed_hours", data: {} });
+        await ctx.reply(t("settingsEdit.askCholHamoedHours"), { parse_mode: "Markdown" });
       } else {
         await ctx.reply(t("settingsEdit.invalidChooseField"), { parse_mode: "Markdown" });
       }
@@ -63,6 +66,19 @@ export async function handleSettingsEditStep(
       }
       const mins = hours >= 60 ? Math.round(hours) : decimalHoursToMinutes(hours);
       await applySettingsUpdate(ctx, userId, { dailyRequiredMinutes: mins });
+      break;
+    }
+
+    case "settings_edit:chol_hamoed_hours": {
+      const hours = parseStrictNumber(text);
+      if (hours === null || hours < 0) {
+        await ctx.reply(t("settingsEdit.invalidAskCholHamoedHours"), { parse_mode: "Markdown" });
+        return;
+      }
+      // 0 turns the override off: Chol HaMoed days use the normal daily hours.
+      const mins =
+        hours === 0 ? null : hours >= 60 ? Math.round(hours) : decimalHoursToMinutes(hours);
+      await applySettingsUpdate(ctx, userId, { cholHamoedRequiredMinutes: mins });
       break;
     }
 
@@ -160,6 +176,7 @@ async function applySettingsUpdate(
   userId: string,
   update: {
     dailyRequiredMinutes?: number;
+    cholHamoedRequiredMinutes?: number | null;
     timezone?: string;
     workdays?: Weekday[];
     vacationAccrualRate?: number;
@@ -171,17 +188,7 @@ async function applySettingsUpdate(
   SessionStore.clear(userId);
   try {
     const updated = await updateSettings(userId, update);
-    const dailyHoursStr = formatMinutesAsDuration(updated.dailyRequiredMinutes);
-    const workdaysStr = formatWorkdays(updated.workdays as Weekday[]);
-    const vacationRateStr = formatDecimalDays(updated.vacationAccrualRate);
-    const sickRateStr = formatDecimalDays(updated.sickAccrualRate);
-    const settingsBlock = t("settings.display", {
-      dailyHoursStr,
-      workdaysStr,
-      timezone: updated.timezone,
-      vacationRateStr,
-      sickRateStr,
-    });
+    const settingsBlock = formatSettingsDisplay(updated);
 
     await ctx.reply(t("settingsEdit.updated", { settings: settingsBlock }), { parse_mode: "Markdown" });
   } catch (err) {

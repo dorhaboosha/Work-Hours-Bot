@@ -24,6 +24,7 @@ import { AppError } from "@/utils/AppError";
 import type { WorkdayStatus, EndWorkdayResult, DateRecordLookup } from "@shared/types/ViewTypes";
 import type { DailyRecordType, RecordLookupState } from "@shared/types/CoreTypes";
 import { canLogHours } from "@shared/utils/recordTypeUtils";
+import { requiredMinutesFor } from "@/utils/requiredMinutes";
 
 /**
  * Starts today's workday for the given user.
@@ -53,6 +54,7 @@ export async function startWorkday(
 
   const todayStr = getLocalDate(resolvedSettings.timezone);
   const todayDate = localDateToUtcMidnight(todayStr);
+  const requiredMinutes = requiredMinutesFor(resolvedSettings, todayStr);
 
   // These two reads are independent — run them concurrently rather than
   // only issuing the second after the first comes back null.
@@ -82,10 +84,7 @@ export async function startWorkday(
   if (existingToday !== null) {
     // Half-day absence with no hours logged yet → start the session on it.
     if (canLogHours(existingToday) && existingToday.startTime === null) {
-      const remainingRequired = Math.max(
-        0,
-        resolvedSettings.dailyRequiredMinutes - existingToday.creditedMinutes
-      );
+      const remainingRequired = Math.max(0, requiredMinutes - existingToday.creditedMinutes);
       return updateDailyRecord(existingToday.id, {
         startTime,
         expectedEndTime: calcExpectedEndTime(startTime, remainingRequired),
@@ -108,10 +107,7 @@ export async function startWorkday(
     );
   }
 
-  const expectedEndTime = calcExpectedEndTime(
-    startTime,
-    resolvedSettings.dailyRequiredMinutes
-  );
+  const expectedEndTime = calcExpectedEndTime(startTime, requiredMinutes);
 
   return createDailyRecord({ telegramId, workDate: todayDate, recordType: "WORK", startTime, expectedEndTime });
 }
@@ -149,9 +145,10 @@ export async function getTodayStatus(
     const workedMinutesSoFar = calcWorkedMinutesSoFar(openRecord.startTime);
     // Non-zero only when the open session is on a half-day absence record.
     const creditedMinutes = openRecord.creditedMinutes;
+    const requiredMinutes = requiredMinutesFor(resolvedSettings, openDateStr);
     const remainingMinutes = calcRemainingMinutes(
       workedMinutesSoFar + creditedMinutes,
-      resolvedSettings.dailyRequiredMinutes
+      requiredMinutes
     );
 
     return {
@@ -160,6 +157,7 @@ export async function getTodayStatus(
       expectedEndTime: openRecord.expectedEndTime.toISOString(),
       workedMinutesSoFar,
       creditedMinutes,
+      requiredMinutes,
       remainingMinutes,
       isActive: true,
     };
@@ -227,10 +225,8 @@ export async function endWorkday(
   const endTime = new Date();
   const workedMinutes = calcWorkedMinutes(openRecord.startTime, endTime);
   const creditedMinutes = openRecord.creditedMinutes;
-  const balanceMinutes = calcBalance(
-    workedMinutes + creditedMinutes,
-    resolvedSettings.dailyRequiredMinutes
-  );
+  const requiredMinutes = requiredMinutesFor(resolvedSettings, openDateStr);
+  const balanceMinutes = calcBalance(workedMinutes + creditedMinutes, requiredMinutes);
 
   const updated = await updateDailyRecord(openRecord.id, { endTime, workedMinutes });
 
@@ -246,7 +242,7 @@ export async function endWorkday(
     endTime: updated.endTime!.toISOString(),
     workedMinutes: updated.workedMinutes!,
     creditedMinutes,
-    requiredMinutes: resolvedSettings.dailyRequiredMinutes,
+    requiredMinutes,
     balanceMinutes,
   };
 }

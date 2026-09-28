@@ -40,8 +40,9 @@ It was built as a backend-focused project with an emphasis on clean architecture
 - **Edit past dates** — use `/edit dd-mm` to fix hours or mark absences on any workday
 - **Absence types** — sick, vacation, holiday, holiday eve, unpaid absence, and election (via the edit flow). Holidays, holiday eves and election days are company-paid and never debit your vacation balance
 - **Half days** — vacation and sick days can be marked as a full or half day. On a holiday eve the company covers half, and you choose whether the other half was a ½ vacation day or worked. Log the worked half with `/start` and `/end`, or with `/edit dd-mm` → *Log hours worked*
+- **Chol HaMoed hours** — set a reduced daily requirement for Chol HaMoed (Sukkot and Pesach) in `/settings_edit`. The bot recognizes those days automatically from the Hebrew calendar (Israeli schedule) and uses the reduced hours for required time, expected end time, balances and absence credits
 - **Summaries** — weekly and monthly balance views against your configured required hours
-- **Settings** — one-time `/setup`, then `/settings` and `/settings_edit` for daily hours, workdays, and timezone
+- **Settings** — one-time `/setup`, then `/settings` and `/settings_edit` for daily hours, Chol HaMoed hours, workdays, and timezone
 - **Data retention** — daily records from past months are purged automatically; the current month plus a short trailing buffer is kept (see [Data Retention](#data-retention))
 
 ## Commands
@@ -50,7 +51,7 @@ It was built as a backend-focused project with an emphasis on clean architecture
 |---|---|
 | `/setup` | First-time setup: daily required hours, workdays, and timezone |
 | `/settings` | Show your current work settings |
-| `/settings_edit` | Change daily hours, workdays, or timezone |
+| `/settings_edit` | Change daily hours, Chol HaMoed hours, workdays, timezone, or leave rates and balances |
 | `/start` | Start today's workday |
 | `/status` | Show today's active workday status |
 | `/end` | End today's active workday |

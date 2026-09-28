@@ -27,6 +27,7 @@ export type SessionStep =
   | "settings_edit:sick_rate"
   | "settings_edit:vacation_balance"
   | "settings_edit:sick_balance"
+  | "settings_edit:chol_hamoed_hours"
   // /edit dd-mm multi-step
   | "edit:choose_action"
   | "edit:set_end_hour"

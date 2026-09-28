@@ -15,6 +15,7 @@ export interface UpsertUserSettingsData {
 
 export interface UpdateUserSettingsData {
   dailyRequiredMinutes?: number;
+  cholHamoedRequiredMinutes?: number | null;
   timezone?: string;
   workdays?: number[];
   vacationAccrualRate?: number;

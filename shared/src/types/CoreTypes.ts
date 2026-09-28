@@ -30,6 +30,8 @@ export interface UserSettings {
   telegramId: TelegramId;
   /** Required daily work time in minutes, integer > 0. Example: 528 = 8h 48m */
   dailyRequiredMinutes: number;
+  /** Required minutes on Chol HaMoed days (Sukkot/Pesach). null = same as dailyRequiredMinutes. */
+  cholHamoedRequiredMinutes: number | null;
   /** IANA timezone string. Example: "Asia/Jerusalem" */
   timezone: string;
   /** Configured workdays. Example: [0, 1, 2, 3, 4] = Sunday–Thursday */
