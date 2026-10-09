@@ -2,7 +2,17 @@ import type { Context } from "telegraf";
 import { SessionStore } from "@/bot/session/SessionStore";
 import type { Session } from "@/bot/session/SessionStore";
 import { getSettingsOrThrow } from "@/services/SettingsService";
-import { setEndHour, setStartAndEndHours, setHoursOnHalfDay, markAbsence } from "@/services/EditWorkdayService";
+import {
+  setEndHour,
+  setStartAndEndHours,
+  setHoursOnHalfDay,
+  markAbsence,
+  addWorkPeriod,
+  editWorkPeriod,
+  removeWorkPeriod,
+  getEditDayOptions,
+} from "@/services/EditWorkdayService";
+import { formatPeriodsSaved } from "@/bot/utils/formatEditMessage";
 import {
   formatTime,
   formatMinutesAsDuration,
@@ -11,11 +21,12 @@ import {
   formatLeaveFieldLabel,
 } from "@/bot/utils/formatMessage";
 import { t } from "@/i18n";
-import { handleBotError } from "@/bot/utils/handleBotError";
+import { handleBotError, escapeMarkdown } from "@/bot/utils/handleBotError";
+import { AppError } from "@/utils/AppError";
 import { HH_MM_RE, HH_MM_RANGE_RE } from "@/constants/timeFormats";
 import { ABSENCE_TYPES } from "@/constants/absenceTypes";
-import { EDIT_ACTION_MAP } from "@/constants/editActions";
-import { requiresPortionChoice } from "@shared/utils/recordTypeUtils";
+import type { EditAction } from "@/constants/editActions";
+import { requiresPortionChoice, isAbsenceRecordType } from "@shared/utils/recordTypeUtils";
 import type { AbsencePortion, AbsenceRecordType } from "@shared/types/CoreTypes";
 import type { EditWorkdayResult } from "@shared/types/ViewTypes";
 
@@ -26,6 +37,121 @@ import type { EditWorkdayResult } from "@shared/types/ViewTypes";
  *   2 = other half worked (HALF).
  */
 const PORTION_CHOICES: Record<string, AbsencePortion> = { "1": "FULL", "2": "HALF" };
+
+/**
+ * Parses a numbered menu reply: a plain whole number from 1 to `max`, or null.
+ * Strict, so "2abc" or "1.5" are rejected rather than read as 2 or 1.
+ */
+function parseChoice(text: string, max: number): number | null {
+  if (!/^\d+$/.test(text)) return null;
+  const n = Number(text);
+  return n >= 1 && n <= max ? n : null;
+}
+
+/**
+ * Runs a times-entry step's save and replies with the message it returns,
+ * ending the conversation. When the times are rejected as a bad range (end
+ * not after start, or overlapping another work period), the conversation
+ * stays on the same step and asks for different times. Any other error ends
+ * it like before.
+ */
+async function saveTimes(
+  ctx: Context,
+  userId: string,
+  save: () => Promise<string>
+): Promise<void> {
+  let message: string;
+  try {
+    message = await save();
+  } catch (err) {
+    if (err instanceof AppError && err.code === "INVALID_TIME_RANGE") {
+      await ctx.reply(t("edit.invalidTimesRetry", { message: escapeMarkdown(err.message) }), {
+        parse_mode: "Markdown",
+      });
+      return;
+    }
+    SessionStore.clear(userId);
+    await handleBotError(ctx, err);
+    return;
+  }
+  SessionStore.clear(userId);
+  await ctx.reply(message, { parse_mode: "Markdown" });
+}
+
+/**
+ * Asks the user to confirm deleting a date's only work period, naming its
+ * times and what happens to the day (a work day's record is removed; a half
+ * day keeps its absence). Re-reads the date so the question reflects it now;
+ * if it no longer has exactly one period, asks which period to delete instead.
+ */
+async function askToConfirmDeletingLastPeriod(
+  ctx: Context,
+  userId: string,
+  ddMm: string
+): Promise<void> {
+  let options: Awaited<ReturnType<typeof getEditDayOptions>>;
+  try {
+    options = await getEditDayOptions(userId, ddMm);
+  } catch (err) {
+    SessionStore.clear(userId);
+    await handleBotError(ctx, err);
+    return;
+  }
+
+  const { periods, timezone, record } = options;
+  if (periods.length !== 1) {
+    SessionStore.set(userId, {
+      step: "edit:choose_period_to_delete",
+      data: { ddMm, periodCount: periods.length },
+    });
+    await ctx.reply(t("edit.promptChoosePeriodToDelete", { max: periods.length }), {
+      parse_mode: "Markdown",
+    });
+    return;
+  }
+
+  const [period] = periods;
+  const range = `${formatTime(period.startTime, timezone)}–${
+    period.endTime ? formatTime(period.endTime, timezone) : "now"
+  }`;
+  const recordType = record?.recordType;
+  const prompt =
+    recordType && isAbsenceRecordType(recordType)
+      ? t("edit.confirmDeleteLastPeriodHalfDay", {
+          range,
+          date: ddMm,
+          absenceLabel: t(`absenceType.${recordType}`),
+        })
+      : t("edit.confirmDeleteLastPeriod", { range, date: ddMm });
+
+  SessionStore.set(userId, { step: "edit:confirm_delete_last_period", data: { ddMm } });
+  await ctx.reply(prompt, { parse_mode: "Markdown" });
+}
+
+/** Deletes work period `periodNumber` of `ddMm`, ends the conversation and replies with the day's result. */
+async function deletePeriodAndReply(
+  ctx: Context,
+  userId: string,
+  ddMm: string,
+  periodNumber: number
+): Promise<void> {
+  SessionStore.clear(userId);
+  try {
+    const settings = await getSettingsOrThrow(userId);
+    const result = await removeWorkPeriod(userId, ddMm, periodNumber);
+    const message =
+      result === null
+        ? t("edit.periodDeletedNoRecord", { date: ddMm })
+        : formatPeriodsSaved(
+            result,
+            t("edit.titlePeriodDeleted", { periodNumber }),
+            settings.timezone
+          );
+    await ctx.reply(message, { parse_mode: "Markdown" });
+  } catch (err) {
+    await handleBotError(ctx, err);
+  }
+}
 
 /**
  * Appends an optional refund line and/or an optional debit line to a base
@@ -71,17 +197,15 @@ export async function handleEditStep(
 
   switch (session.step) {
     case "edit:choose_action": {
-      const { ddMm, editState } = session.data;
-      if (!ddMm || !editState) { SessionStore.clear(userId); return; }
+      const { ddMm, editMenu, periodCount = 0 } = session.data;
+      if (!ddMm || !editMenu) { SessionStore.clear(userId); return; }
 
-      const actionMap = EDIT_ACTION_MAP[editState] ?? {};
-      const action = actionMap[text];
-
-      if (!action) {
-        const maxChoice = Object.keys(actionMap).length;
-        await ctx.reply(t("edit.invalidChoice", { maxChoice }), { parse_mode: "Markdown" });
+      const choice = parseChoice(text, editMenu.length);
+      if (choice === null) {
+        await ctx.reply(t("edit.invalidChoice", { maxChoice: editMenu.length }), { parse_mode: "Markdown" });
         return;
       }
+      const action = editMenu[choice - 1] as EditAction;
 
       if (action === "CANCEL") {
         SessionStore.clear(userId);
@@ -103,10 +227,106 @@ export async function handleEditStep(
       } else if (action === "LOG_HOURS") {
         SessionStore.set(userId, { step: "edit:log_hours", data: { ddMm } });
         await ctx.reply(t("edit.promptLogHours"), { parse_mode: "Markdown" });
+      } else if (action === "ADD_PERIOD") {
+        SessionStore.set(userId, { step: "edit:add_period", data: { ddMm } });
+        await ctx.reply(t("edit.promptAddPeriod"), { parse_mode: "Markdown" });
+      } else if (action === "EDIT_PERIOD") {
+        // With a single period there's nothing to choose — go straight to its times.
+        if (periodCount === 1) {
+          SessionStore.set(userId, { step: "edit:edit_period", data: { ddMm, periodNumber: 1 } });
+          await ctx.reply(t("edit.promptEditOnlyPeriod"), { parse_mode: "Markdown" });
+        } else {
+          SessionStore.set(userId, { step: "edit:choose_period_to_edit", data: { ddMm, periodCount } });
+          await ctx.reply(t("edit.promptChoosePeriodToEdit", { max: periodCount }), { parse_mode: "Markdown" });
+        }
+      } else if (action === "DELETE_PERIOD") {
+        if (periodCount === 1) {
+          // Deleting the only period empties the day — confirm first.
+          await askToConfirmDeletingLastPeriod(ctx, userId, ddMm);
+        } else {
+          SessionStore.set(userId, { step: "edit:choose_period_to_delete", data: { ddMm, periodCount } });
+          await ctx.reply(t("edit.promptChoosePeriodToDelete", { max: periodCount }), { parse_mode: "Markdown" });
+        }
       } else if (action === "MARK_ABSENCE") {
         SessionStore.set(userId, { step: "edit:choose_absence", data: { ddMm } });
         await ctx.reply(t("edit.absenceTypeList"), { parse_mode: "Markdown" });
       }
+      break;
+    }
+
+    case "edit:add_period": {
+      const { ddMm } = session.data;
+      if (!ddMm) { SessionStore.clear(userId); return; }
+
+      const match = HH_MM_RANGE_RE.exec(text);
+      if (!match) {
+        await ctx.reply(t("edit.invalidTimeRangeFormat", { example: "15:00-18:30" }), { parse_mode: "Markdown" });
+        return;
+      }
+
+      const [, startHhMm, endHhMm] = match;
+      await saveTimes(ctx, userId, async () => {
+        const settings = await getSettingsOrThrow(userId);
+        const result = await addWorkPeriod(userId, ddMm, startHhMm, endHhMm);
+        return formatPeriodsSaved(result, t("edit.titlePeriodAdded"), settings.timezone);
+      });
+      break;
+    }
+
+    case "edit:choose_period_to_edit":
+    case "edit:choose_period_to_delete": {
+      const { ddMm, periodCount } = session.data;
+      if (!ddMm || !periodCount) { SessionStore.clear(userId); return; }
+
+      const periodNumber = parseChoice(text, periodCount);
+      if (periodNumber === null) {
+        await ctx.reply(t("edit.invalidChoosePeriod", { max: periodCount }), { parse_mode: "Markdown" });
+        return;
+      }
+
+      if (session.step === "edit:choose_period_to_edit") {
+        SessionStore.set(userId, { step: "edit:edit_period", data: { ddMm, periodNumber } });
+        await ctx.reply(t("edit.promptEditPeriod", { periodNumber }), { parse_mode: "Markdown" });
+        break;
+      }
+
+      await deletePeriodAndReply(ctx, userId, ddMm, periodNumber);
+      break;
+    }
+
+    case "edit:confirm_delete_last_period": {
+      const { ddMm } = session.data;
+      if (!ddMm) { SessionStore.clear(userId); return; }
+
+      if (text.trim().toLowerCase() === "yes") {
+        await deletePeriodAndReply(ctx, userId, ddMm, 1);
+      } else {
+        SessionStore.clear(userId);
+        await ctx.reply(t("edit.cancelled"), { parse_mode: "Markdown" });
+      }
+      break;
+    }
+
+    case "edit:edit_period": {
+      const { ddMm, periodNumber } = session.data;
+      if (!ddMm || !periodNumber) { SessionStore.clear(userId); return; }
+
+      const match = HH_MM_RANGE_RE.exec(text);
+      if (!match) {
+        await ctx.reply(t("edit.invalidTimeRangeFormat", { example: "15:00-18:30" }), { parse_mode: "Markdown" });
+        return;
+      }
+
+      const [, startHhMm, endHhMm] = match;
+      await saveTimes(ctx, userId, async () => {
+        const settings = await getSettingsOrThrow(userId);
+        const result = await editWorkPeriod(userId, ddMm, periodNumber, startHhMm, endHhMm);
+        return formatPeriodsSaved(
+          result,
+          t("edit.titlePeriodUpdated", { periodNumber }),
+          settings.timezone
+        );
+      });
       break;
     }
 
@@ -115,26 +335,24 @@ export async function handleEditStep(
       if (!ddMm) { SessionStore.clear(userId); return; }
 
       if (!HH_MM_RE.test(text)) {
-        await ctx.reply(t("edit.invalidPromptEndHour"), { parse_mode: "Markdown" });
+        await ctx.reply(t("edit.invalidTimeFormat"), { parse_mode: "Markdown" });
         return;
       }
 
-      SessionStore.clear(userId);
-      try {
+      await saveTimes(ctx, userId, async () => {
         const settings = await getSettingsOrThrow(userId);
         const result = await setEndHour(userId, ddMm, text);
+
+        // Several periods → list them all; one → the Start/End layout.
+        if (result.periods.length > 1) {
+          return formatPeriodsSaved(result, t("edit.titleEndHourSaved"), settings.timezone);
+        }
         const startStr = formatTime(result.startTime!, settings.timezone);
         const endStr = formatTime(result.endTime!, settings.timezone);
         const workedStr = formatMinutesAsDuration(result.workedMinutes);
         const balanceStr = formatBalance(result.balanceMinutes);
-
-        await ctx.reply(
-          t("edit.endHourSaved", { date: ddMm, startStr, endStr, workedStr, balanceStr }),
-          { parse_mode: "Markdown" }
-        );
-      } catch (err) {
-        await handleBotError(ctx, err);
-      }
+        return t("edit.endHourSaved", { date: ddMm, startStr, endStr, workedStr, balanceStr });
+      });
       break;
     }
 
@@ -144,13 +362,12 @@ export async function handleEditStep(
 
       const match = HH_MM_RANGE_RE.exec(text);
       if (!match) {
-        await ctx.reply(t("edit.invalidPromptStartAndEndHours"), { parse_mode: "Markdown" });
+        await ctx.reply(t("edit.invalidTimeRangeFormat", { example: "08:15-17:30" }), { parse_mode: "Markdown" });
         return;
       }
 
       const [, startHhMm, endHhMm] = match;
-      SessionStore.clear(userId);
-      try {
+      await saveTimes(ctx, userId, async () => {
         const settings = await getSettingsOrThrow(userId);
         const result = await setStartAndEndHours(userId, ddMm, startHhMm, endHhMm);
         const startStr = formatTime(result.startTime!, settings.timezone);
@@ -158,14 +375,11 @@ export async function handleEditStep(
         const workedStr = formatMinutesAsDuration(result.workedMinutes);
         const balanceStr = formatBalance(result.balanceMinutes);
 
-        const message = appendLeaveAdjustmentLines(
+        return appendLeaveAdjustmentLines(
           t("edit.startEndSaved", { date: ddMm, startStr, endStr, workedStr, balanceStr }),
           result
         );
-        await ctx.reply(message, { parse_mode: "Markdown" });
-      } catch (err) {
-        await handleBotError(ctx, err);
-      }
+      });
       break;
     }
 
@@ -175,31 +389,25 @@ export async function handleEditStep(
 
       const match = HH_MM_RANGE_RE.exec(text);
       if (!match) {
-        await ctx.reply(t("edit.invalidPromptLogHours"), { parse_mode: "Markdown" });
+        await ctx.reply(t("edit.invalidTimeRangeFormat", { example: "13:00-17:30" }), { parse_mode: "Markdown" });
         return;
       }
 
       const [, startHhMm, endHhMm] = match;
-      SessionStore.clear(userId);
-      try {
+      await saveTimes(ctx, userId, async () => {
         const settings = await getSettingsOrThrow(userId);
         const result = await setHoursOnHalfDay(userId, ddMm, startHhMm, endHhMm);
 
-        await ctx.reply(
-          t("edit.halfDayHoursSaved", {
-            date: ddMm,
-            absenceLabel: t(`absenceType.${result.recordType}`),
-            creditedStr: formatMinutesAsDuration(result.creditedMinutes),
-            startStr: formatTime(result.startTime!, settings.timezone),
-            endStr: formatTime(result.endTime!, settings.timezone),
-            workedStr: formatMinutesAsDuration(result.workedMinutes),
-            balanceStr: formatBalance(result.balanceMinutes),
-          }),
-          { parse_mode: "Markdown" }
-        );
-      } catch (err) {
-        await handleBotError(ctx, err);
-      }
+        return t("edit.halfDayHoursSaved", {
+          date: ddMm,
+          absenceLabel: t(`absenceType.${result.recordType}`),
+          creditedStr: formatMinutesAsDuration(result.creditedMinutes),
+          startStr: formatTime(result.startTime!, settings.timezone),
+          endStr: formatTime(result.endTime!, settings.timezone),
+          workedStr: formatMinutesAsDuration(result.workedMinutes),
+          balanceStr: formatBalance(result.balanceMinutes),
+        });
+      });
       break;
     }
 
@@ -286,13 +494,18 @@ export async function handleEditStep(
   }
 }
 
+/**
+ * Starts the /edit conversation: remembers the menu shown (`editMenu`, in
+ * order) and how many work periods the date has, then sends `prompt`.
+ */
 export async function startEditFlow(
   ctx: Context,
   userId: string,
   ddMm: string,
-  editState: string,
+  editMenu: EditAction[],
+  periodCount: number,
   prompt: string
 ): Promise<void> {
-  SessionStore.set(userId, { step: "edit:choose_action", data: { ddMm, editState } });
+  SessionStore.set(userId, { step: "edit:choose_action", data: { ddMm, editMenu, periodCount } });
   await ctx.reply(prompt, { parse_mode: "Markdown" });
 }

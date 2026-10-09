@@ -77,9 +77,13 @@ export interface EditDayOptions {
   workDate: string;
   /** dd-mm */
   displayDate: string;
+  /** IANA timezone resolved from user settings */
+  timezone: string;
   state: EditRecordState;
   /** null when state is NO_RECORD */
   record: DailyRecord | null;
+  /** The date's work periods in start order (an open one counted up to now); empty when no hours are logged */
+  periods: WorkPeriodView[];
   allowedActions: EditAction[];
 }
 
@@ -102,8 +106,10 @@ export interface EditWorkdayResult {
   expectedEndTime?: string | null;
   /** UTC timestamp. null for full-day absence records */
   endTime?: string | null;
-  /** Actual worked minutes, integer >= 0 */
+  /** Actual worked minutes (the total of all periods), integer >= 0 */
   workedMinutes: number;
+  /** The date's work periods after the edit, in start order; empty when no hours are logged */
+  periods: WorkPeriodView[];
   /** Minutes credited by the absence (leave or company-paid time). 0 for WORK records. */
   creditedMinutes: number;
   requiredMinutes: number;

@@ -94,6 +94,14 @@ export async function updateDailyRecord(
   });
 }
 
+/** Deletes one record (its work periods cascade with it). */
+export async function deleteDailyRecord(
+  id: string,
+  client: PrismaClientOrTx = prisma
+): Promise<void> {
+  await client.dailyRecord.delete({ where: { id } });
+}
+
 /**
  * Creates or replaces the record for a specific (telegramId, workDate).
  * Used by the edit-day flow (SET_START_AND_END_HOURS, MARK_ABSENCE).

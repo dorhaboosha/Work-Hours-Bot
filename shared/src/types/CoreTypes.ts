@@ -115,6 +115,12 @@ export type EditAction =
   | "SET_START_AND_END_HOURS"
   /** Set the worked hours on a half-day absence, keeping the absence. */
   | "LOG_HOURS"
+  /** Add one more closed work period to a day that already has hours. */
+  | "ADD_WORK_PERIOD"
+  /** Change the start/end of one work period. */
+  | "EDIT_WORK_PERIOD"
+  /** Remove one work period. */
+  | "DELETE_WORK_PERIOD"
   | "MARK_ABSENCE"
   | "CANCEL";
 

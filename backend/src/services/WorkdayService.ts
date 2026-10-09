@@ -15,7 +15,6 @@ import type { DailyRecord, UserSettings } from "@/generated/prisma/client";
 import { getSettingsOrThrow } from "@/services/SettingsService";
 import {
   calcExpectedEndTime,
-  calcWorkedMinutes,
   calcPeriodsWorkedMinutes,
   calcRemainingMinutes,
   calcBalance,
@@ -37,6 +36,7 @@ import type { DailyRecordType, RecordLookupState } from "@shared/types/CoreTypes
 import { canLogHours } from "@shared/utils/recordTypeUtils";
 import { requiredMinutesFor } from "@/utils/requiredMinutes";
 import { MAX_WORK_PERIODS_PER_DAY } from "@/constants/workPeriods";
+import { toWorkPeriodViews } from "@/utils/workPeriodViews";
 
 /** Returned by startWorkday: the day's record plus all of its periods. */
 export interface StartWorkdayResult {
@@ -317,18 +317,6 @@ export async function endWorkday(
     requiredMinutes,
     balanceMinutes,
   };
-}
-
-/** Maps a day's periods to their view shape; an open period counts up to `now`. */
-function toWorkPeriodViews(
-  periods: ReadonlyArray<{ startTime: Date; endTime: Date | null }>,
-  now: Date
-): WorkPeriodView[] {
-  return periods.map((p) => ({
-    startTime: p.startTime.toISOString(),
-    endTime: p.endTime?.toISOString() ?? null,
-    workedMinutes: calcWorkedMinutes(p.startTime, p.endTime ?? now),
-  }));
 }
 
 /**

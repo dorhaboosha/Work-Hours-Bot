@@ -46,3 +46,18 @@ export async function updateWorkPeriod(
     data: input,
   });
 }
+
+export async function deleteWorkPeriod(
+  id: string,
+  client: PrismaClientOrTx = prisma
+): Promise<void> {
+  await client.workPeriod.delete({ where: { id } });
+}
+
+/** Deletes every period of a day (e.g. before replacing them, or when its hours are cleared). */
+export async function deleteWorkPeriodsOfRecord(
+  dailyRecordId: string,
+  client: PrismaClientOrTx = prisma
+): Promise<void> {
+  await client.workPeriod.deleteMany({ where: { dailyRecordId } });
+}

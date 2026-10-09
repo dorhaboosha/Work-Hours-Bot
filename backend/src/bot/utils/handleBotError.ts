@@ -3,7 +3,7 @@ import { AppError } from "@/utils/AppError";
 import { t } from "@/i18n";
 
 /** Escapes Telegram Markdown v1 special characters in user-supplied text. */
-function escapeMarkdown(text: string): string {
+export function escapeMarkdown(text: string): string {
   return text.replace(/[_*`[]/g, (c) => `\\${c}`);
 }
 

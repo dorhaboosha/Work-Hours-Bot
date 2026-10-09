@@ -3,8 +3,8 @@ import { getEditDayOptions } from "@/services/EditWorkdayService";
 import { handleBotError } from "@/bot/utils/handleBotError";
 import { t } from "@/i18n";
 import { startEditFlow } from "@/bot/flows/editDayFlow";
-import type { AbsenceRecordType, DailyRecordType } from "@shared/types/CoreTypes";
-import { isAbsenceRecordType } from "@shared/utils/recordTypeUtils";
+import { formatEditMenuPrompt } from "@/bot/utils/formatEditMessage";
+import { buildEditMenu } from "@/constants/editActions";
 import { DD_MM_RE } from "@/constants/timeFormats";
 import { getCommandArgs } from "@/bot/utils/messageText";
 
@@ -22,36 +22,16 @@ export async function handleEdit(ctx: Context): Promise<void> {
 
     const ddMm = args[0];
     const options = await getEditDayOptions(telegramId, ddMm);
+    const menu = buildEditMenu(options.state, options.allowedActions, options.periods.length);
 
-    const recType = options.record?.recordType as DailyRecordType | undefined;
-    const absenceLabel =
-      recType && isAbsenceRecordType(recType)
-        ? t(`absenceType.${recType as AbsenceRecordType}`)
-        : recType ?? "absence";
-
-    let prompt: string;
-    switch (options.state) {
-      case "OPEN_WORK_RECORD":
-        prompt = t("edit.openRecord", { date: ddMm });
-        break;
-      case "NO_RECORD":
-        prompt = t("edit.noRecord", { date: ddMm });
-        break;
-      case "CLOSED_WORK_RECORD":
-        prompt = t("edit.closedRecord", { date: ddMm });
-        break;
-      case "ABSENCE_RECORD":
-        prompt = t("edit.absenceRecord", { date: ddMm, absenceLabel });
-        break;
-      case "HALF_DAY_RECORD":
-        prompt = t("edit.halfDayRecord", { date: ddMm, absenceLabel });
-        break;
-      case "HALF_DAY_OPEN_RECORD":
-        prompt = t("edit.halfDayOpenRecord", { date: ddMm, absenceLabel });
-        break;
-    }
-
-    await startEditFlow(ctx, telegramId, ddMm, options.state, prompt);
+    await startEditFlow(
+      ctx,
+      telegramId,
+      ddMm,
+      menu.map((entry) => entry.action),
+      options.periods.length,
+      formatEditMenuPrompt(options, menu)
+    );
   } catch (err) {
     await handleBotError(ctx, err);
   }
