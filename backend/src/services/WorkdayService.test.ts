@@ -935,6 +935,37 @@ describe("WorkdayService", async () => {
 
       assert.equal(result.state, "NO_RECORD");
       assert.equal(result.record, null);
+      assert.deepEqual(result.periods, []);
+      assert.equal(mockListWorkPeriods.mock.calls.length, 0);
+    });
+
+    it("returns every period of a completed day, in order, with each period's minutes", async () => {
+      const record = makeCompletedWorkRecord();
+      mockFindRecordByDate.mock.mockImplementationOnce(async () => record);
+      // 06:00–11:00 (300) and 12:00–15:30 (210) UTC
+      mockListWorkPeriods.mock.mockImplementationOnce(async () => [
+        makePeriod(new Date("2026-06-12T06:00:00Z"), new Date("2026-06-12T11:00:00Z"), "p1"),
+        makePeriod(new Date("2026-06-12T12:00:00Z"), new Date("2026-06-12T15:30:00Z"), "p2"),
+      ]);
+
+      const result = await getDateRecord("user1", "12-06");
+
+      assert.equal(result.state, "COMPLETED_WORK_RECORD");
+      assert.equal(mockListWorkPeriods.mock.calls[0].arguments[0], "r-completed");
+      assert.deepEqual(result.periods, [
+        { startTime: "2026-06-12T06:00:00.000Z", endTime: "2026-06-12T11:00:00.000Z", workedMinutes: 300 },
+        { startTime: "2026-06-12T12:00:00.000Z", endTime: "2026-06-12T15:30:00.000Z", workedMinutes: 210 },
+      ]);
+    });
+
+    it("returns no periods (and skips the query) for an absence without logged hours", async () => {
+      mockFindRecordByDate.mock.mockImplementationOnce(async () => makeVacationRecord());
+
+      const result = await getDateRecord("user1", "12-06");
+
+      assert.equal(result.state, "ABSENCE_RECORD");
+      assert.deepEqual(result.periods, []);
+      assert.equal(mockListWorkPeriods.mock.calls.length, 0);
     });
 
     it("resolves dd-mm to the correct workDate and passes the matching UTC Date to findRecordByDate", async () => {

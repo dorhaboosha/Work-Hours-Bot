@@ -132,10 +132,13 @@
   "record": {
     "completedWork": "📋 *Record for {{date}}*\n\n🕐 Start:   *{{startStr}}*\n🏁 End:     *{{endStr}}*\n✅ Worked:  *{{workedStr}}*",
     "openWork": "📋 *Record for {{date}}*\n\n🕐 Start:  *{{startStr}}*\n🏁 End:    *Not set*\n📂 Status: *Open*",
+    "completedWorkPeriods": "📋 *Record for {{date}}*\n\n{{periodsBlock}}\n\n✅ Worked:  *{{workedStr}}*",
+    "openWorkPeriods": "📋 *Record for {{date}}*\n\n{{periodsBlock}}\n\n✅ Worked so far: *{{workedStr}}*\n📂 Status: *Open*",
     "absence": "📋 *Record for {{date}}*\n\n📂 Status: *{{absenceLabel}}*",
     "halfDay": "📋 *Record for {{date}}*\n\n📂 Status:   *{{absenceLabel}} (half day)*\n📋 Credited: *{{creditedStr}}*{{hoursLine}}",
     "halfDayHours": "\n🕐 Start:    *{{startStr}}*\n🏁 End:      *{{endStr}}*\n✅ Worked:   *{{workedStr}}*",
     "halfDayOpen": "\n🕐 Start:    *{{startStr}}*\n🏁 End:      *Not set*",
+    "halfDayPeriods": "\n\n{{periodsBlock}}\n\n✅ Worked:   *{{workedStr}}*",
     "halfDayNoHours": "\n🕐 No hours logged yet",
     "noRecord": "📋 *No record found for {{date}}.*",
     "usageHint": "Usage: `/record` or `/record dd-mm` (e.g. `/record 12-06`)"

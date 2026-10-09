@@ -351,37 +351,41 @@ export async function getDateRecord(
   const workDateStr = resolveDdMmToDate(ddMm, resolvedSettings.timezone);
   const workDate = localDateToUtcMidnight(workDateStr);
 
-  const prisma = await findRecordByDate(telegramId, workDate);
-
-  const state: RecordLookupState = resolveRecordLookupState(prisma);
+  const found = await findRecordByDate(telegramId, workDate);
   const base = { workDate: workDateStr, displayDate: ddMm, timezone: resolvedSettings.timezone };
 
-  if (state === "NO_RECORD") {
-    return { ...base, state, record: null };
+  if (found === null) {
+    return { ...base, periods: [], state: "NO_RECORD", record: null };
   }
 
+  // Only records with logged hours have periods (full-day absences and half
+  // days without hours have no startTime) — skip the query for the rest.
+  const periods =
+    found.startTime !== null
+      ? toWorkPeriodViews(await listWorkPeriods(found.id), new Date())
+      : [];
+
   const record = {
-    id: prisma!.id,
-    telegramId: prisma!.telegramId,
+    id: found.id,
+    telegramId: found.telegramId,
     workDate: workDateStr,
-    recordType: prisma!.recordType as DailyRecordType,
-    absencePortion: prisma!.absencePortion,
-    startTime: prisma!.startTime?.toISOString() ?? null,
-    expectedEndTime: prisma!.expectedEndTime?.toISOString() ?? null,
-    endTime: prisma!.endTime?.toISOString() ?? null,
-    workedMinutes: prisma!.workedMinutes ?? null,
-    creditedMinutes: prisma!.creditedMinutes,
-    createdAt: prisma!.createdAt.toISOString(),
-    updatedAt: prisma!.updatedAt.toISOString(),
+    recordType: found.recordType as DailyRecordType,
+    absencePortion: found.absencePortion,
+    startTime: found.startTime?.toISOString() ?? null,
+    expectedEndTime: found.expectedEndTime?.toISOString() ?? null,
+    endTime: found.endTime?.toISOString() ?? null,
+    workedMinutes: found.workedMinutes ?? null,
+    creditedMinutes: found.creditedMinutes,
+    createdAt: found.createdAt.toISOString(),
+    updatedAt: found.updatedAt.toISOString(),
   };
 
-  return { ...base, state, record };
+  return { ...base, periods, state: resolveRecordLookupState(found), record };
 }
 
 function resolveRecordLookupState(
-  record: Awaited<ReturnType<typeof findRecordByDate>>
-): RecordLookupState {
-  if (record === null) return "NO_RECORD";
+  record: DailyRecord
+): Exclude<RecordLookupState, "NO_RECORD"> {
   if (record.recordType === "WORK") {
     return record.endTime === null ? "OPEN_WORK_RECORD" : "COMPLETED_WORK_RECORD";
   }

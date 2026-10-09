@@ -38,6 +38,11 @@ export function formatWorkPeriodsList(periods: WorkPeriodView[], timezone: strin
     .join("\n");
 }
 
+/** The "🕐 Work periods:" header followed by the numbered period list. */
+export function formatWorkPeriodsBlock(periods: WorkPeriodView[], timezone: string): string {
+  return `${t("workPeriods.header")}\n${formatWorkPeriodsList(periods, timezone)}`;
+}
+
 /** Renders the settings block shown by /settings, /settings_edit and /setup. */
 export function formatSettingsDisplay(settings: UserSettings): string {
   return t("settings.display", {

@@ -5,7 +5,7 @@ import {
   formatTime,
   formatMinutesAsDuration,
   formatBalance,
-  formatWorkPeriodsList,
+  formatWorkPeriodsBlock,
 } from "@/bot/utils/formatMessage";
 import { handleBotError } from "@/bot/utils/handleBotError";
 import { t } from "@/i18n";
@@ -25,7 +25,7 @@ export async function handleEnd(ctx: Context): Promise<void> {
       ? t("end.titlePeriod", { periodNumber: result.periods.length })
       : t("end.titleSingle");
     const periodsBlock = multiPeriod
-      ? `${t("workPeriods.header")}\n${formatWorkPeriodsList(result.periods, settings.timezone)}`
+      ? formatWorkPeriodsBlock(result.periods, settings.timezone)
       : t("end.startEndLines", {
           startStr: formatTime(result.startTime, settings.timezone),
           endStr: formatTime(result.endTime, settings.timezone),

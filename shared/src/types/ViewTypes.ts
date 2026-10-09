@@ -143,6 +143,8 @@ type DateRecordLookupBase = {
   displayDate: string;
   /** IANA timezone resolved from user settings */
   timezone: string;
+  /** The day's work periods in start order (an open one counted up to now); empty when no hours are logged */
+  periods: WorkPeriodView[];
 };
 
 /**

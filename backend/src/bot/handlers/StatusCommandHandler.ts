@@ -5,7 +5,7 @@ import {
   formatTime,
   formatMinutesAsDuration,
   formatBalance,
-  formatWorkPeriodsList,
+  formatWorkPeriodsBlock,
 } from "@/bot/utils/formatMessage";
 import { handleBotError } from "@/bot/utils/handleBotError";
 import { t } from "@/i18n";
@@ -21,7 +21,7 @@ export async function handleStatus(ctx: Context): Promise<void> {
     // One period → the familiar "Start" line; several → the numbered list.
     const periodsBlock =
       status.periods.length > 1
-        ? `${t("workPeriods.header")}\n${formatWorkPeriodsList(status.periods, settings.timezone)}`
+        ? formatWorkPeriodsBlock(status.periods, settings.timezone)
         : t("status.startLine", { startStr: formatTime(status.startTime, settings.timezone) });
     const endStr = formatTime(status.expectedEndTime, settings.timezone);
     const workedStr = formatMinutesAsDuration(status.workedMinutesSoFar);

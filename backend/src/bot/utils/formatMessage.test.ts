@@ -1,7 +1,11 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import type { UserSettings } from "@/generated/prisma/client";
-import { formatSettingsDisplay, formatWorkPeriodsList } from "./formatMessage";
+import {
+  formatSettingsDisplay,
+  formatWorkPeriodsList,
+  formatWorkPeriodsBlock,
+} from "./formatMessage";
 
 function makeSettings(overrides: Partial<UserSettings> = {}): UserSettings {
   return {
@@ -58,5 +62,22 @@ describe("formatWorkPeriodsList", () => {
     );
 
     assert.equal(text.split("\n")[1], "2. *15:00–now* (01:10)");
+  });
+});
+
+describe("formatWorkPeriodsBlock", () => {
+  it("puts the Work periods header above the numbered list", () => {
+    const text = formatWorkPeriodsBlock(
+      [
+        { startTime: "2026-10-05T05:00:00.000Z", endTime: "2026-10-05T10:00:00.000Z", workedMinutes: 300 },
+        { startTime: "2026-10-05T12:00:00.000Z", endTime: "2026-10-05T15:30:00.000Z", workedMinutes: 210 },
+      ],
+      "Asia/Jerusalem"
+    );
+
+    assert.equal(
+      text,
+      "🕐 Work periods:\n1. *08:00–13:00* (05:00)\n2. *15:00–18:30* (03:30)"
+    );
   });
 });
