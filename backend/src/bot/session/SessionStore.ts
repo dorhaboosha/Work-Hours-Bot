@@ -33,6 +33,11 @@ export type SessionStep =
   | "edit:set_end_hour"
   | "edit:set_start_end"
   | "edit:log_hours"
+  | "edit:add_period"
+  | "edit:choose_period_to_edit"
+  | "edit:choose_period_to_delete"
+  | "edit:confirm_delete_last_period"
+  | "edit:edit_period"
   | "edit:choose_absence"
   | "edit:choose_portion";
 
@@ -45,8 +50,12 @@ export interface SessionData {
   sickAccrualRate?: number;
   /** Preserved during /edit flow */
   ddMm?: string;
-  /** EditRecordState string from the initial getEditDayOptions call */
-  editState?: string;
+  /** The /edit menu's actions in order (choice N = editMenu[N - 1]) */
+  editMenu?: string[];
+  /** How many work periods the edited date has (bounds the period number choice) */
+  periodCount?: number;
+  /** The work period (1-based) being edited */
+  periodNumber?: number;
   /** AbsenceRecordType string, set while awaiting the full/half day choice for MARK_ABSENCE */
   absenceType?: string;
 }

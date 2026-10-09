@@ -1,3 +1,4 @@
+import { prisma } from "@/config/PrismaClient";
 import {
   createDailyRecord,
   findOpenWorkRecord,
@@ -5,12 +6,16 @@ import {
   updateDailyRecord,
   listRecordsByRange,
 } from "@/repositories/DailyRecordRepository";
+import {
+  createWorkPeriod,
+  listWorkPeriods,
+  updateWorkPeriod,
+} from "@/repositories/WorkPeriodRepository";
 import type { DailyRecord, UserSettings } from "@/generated/prisma/client";
 import { getSettingsOrThrow } from "@/services/SettingsService";
 import {
   calcExpectedEndTime,
-  calcWorkedMinutes,
-  calcWorkedMinutesSoFar,
+  calcPeriodsWorkedMinutes,
   calcRemainingMinutes,
   calcBalance,
 } from "@/services/TimeCalculationService";
@@ -21,26 +26,45 @@ import {
   localDateToUtcMidnight,
 } from "@/utils/DateUtils";
 import { AppError } from "@/utils/AppError";
-import type { WorkdayStatus, EndWorkdayResult, DateRecordLookup } from "@shared/types/ViewTypes";
+import type {
+  WorkdayStatus,
+  EndWorkdayResult,
+  DateRecordLookup,
+  WorkPeriodView,
+} from "@shared/types/ViewTypes";
 import type { DailyRecordType, RecordLookupState } from "@shared/types/CoreTypes";
 import { canLogHours } from "@shared/utils/recordTypeUtils";
 import { requiredMinutesFor } from "@/utils/requiredMinutes";
+import { MAX_WORK_PERIODS_PER_DAY } from "@/constants/workPeriods";
+import { toWorkPeriodViews } from "@/utils/workPeriodViews";
+
+/** Returned by startWorkday: the day's record plus all of its periods. */
+export interface StartWorkdayResult {
+  record: DailyRecord;
+  /** Today's periods in start order; the last one is the period just opened. */
+  periods: WorkPeriodView[];
+  /** Minutes already worked today in earlier (closed) periods. */
+  workedMinutesSoFar: number;
+}
 
 /**
- * Starts today's workday for the given user.
+ * Starts a work period today for the given user.
  *
- * If today is already marked as a half-day absence (e.g. ½ vacation day, or a
- * holiday eve whose other half is worked) and no hours were logged on it yet,
- * the session starts on that record instead of creating a new one: its
- * absence, credit and debit are kept, and expectedEndTime only covers the
- * remaining (required − credited) minutes.
+ * - No record today → creates today's WORK record with period 1.
+ * - Today already has hours (all periods closed), or is a half-day absence
+ *   (e.g. ½ vacation, or a holiday eve whose other half is worked) → opens
+ *   another period on the same record. Its absence, credit and debit are
+ *   kept, and expectedEndTime only covers what is still missing:
+ *   required − credited − already worked.
  *
  * Guards (checked in order):
  * - PREVIOUS_RECORD_STILL_OPEN  – an open record exists from a prior local date.
- * - DAILY_RECORD_ALREADY_EXISTS – today already has a session (open or closed),
- *                                  including a half day with hours logged.
+ * - DAILY_RECORD_ALREADY_EXISTS – a period is already open today (including one
+ *                                  opened by a concurrent /start).
  * - DAY_MARKED_AS_ABSENCE       – today is a full-day absence (no hours can be
  *                                  logged on it). details.recordType holds the type.
+ * - WORK_PERIOD_LIMIT_REACHED   – today already has MAX_WORK_PERIODS_PER_DAY
+ *                                  periods. details.max holds the limit.
  * - USER_SETTINGS_NOT_FOUND     – no settings found (from getSettingsOrThrow).
  *
  * `settings` may be passed in when the caller has already loaded it (e.g. a
@@ -49,7 +73,7 @@ import { requiredMinutesFor } from "@/utils/requiredMinutes";
 export async function startWorkday(
   telegramId: string,
   settings?: UserSettings
-): Promise<DailyRecord> {
+): Promise<StartWorkdayResult> {
   const resolvedSettings = settings ?? (await getSettingsOrThrow(telegramId));
 
   const todayStr = getLocalDate(resolvedSettings.timezone);
@@ -72,7 +96,7 @@ export async function startWorkday(
         `You have an unfinished workday from ${openDateStr}. Use /edit ${openDateStr} to close it before starting a new one.`
       );
     }
-    // Open record is for today — already started
+    // A period is already open today
     throw new AppError(
       "DAILY_RECORD_ALREADY_EXISTS",
       "You have already started today's workday."
@@ -81,35 +105,84 @@ export async function startWorkday(
 
   const startTime = new Date();
 
-  if (existingToday !== null) {
-    // Half-day absence with no hours logged yet → start the session on it.
-    if (canLogHours(existingToday) && existingToday.startTime === null) {
-      const remainingRequired = Math.max(0, requiredMinutes - existingToday.creditedMinutes);
-      return updateDailyRecord(existingToday.id, {
-        startTime,
-        expectedEndTime: calcExpectedEndTime(startTime, remainingRequired),
-      });
-    }
+  if (existingToday === null) {
+    const expectedEndTime = calcExpectedEndTime(startTime, requiredMinutes);
+    const { record, period } = await prisma
+      .$transaction(async (tx) => {
+        const record = await createDailyRecord(
+          { telegramId, workDate: todayDate, recordType: "WORK", startTime, expectedEndTime },
+          tx
+        );
+        const period = await createWorkPeriod({ dailyRecordId: record.id, startTime }, tx);
+        return { record, period };
+      })
+      .catch(rethrowConcurrentStart);
+    return { record, periods: toWorkPeriodViews([period], startTime), workedMinutesSoFar: 0 };
+  }
 
-    if (!canLogHours(existingToday)) {
-      throw new AppError(
-        "DAY_MARKED_AS_ABSENCE",
-        "Today is marked as a full-day absence.",
-        { recordType: existingToday.recordType }
-      );
-    }
-
-    // A session already exists for today (closed WORK day, or a half day
-    // with hours already logged).
+  if (!canLogHours(existingToday)) {
     throw new AppError(
-      "DAILY_RECORD_ALREADY_EXISTS",
-      "A record for today already exists."
+      "DAY_MARKED_AS_ABSENCE",
+      "Today is marked as a full-day absence.",
+      { recordType: existingToday.recordType }
     );
   }
 
-  const expectedEndTime = calcExpectedEndTime(startTime, requiredMinutes);
+  const earlierPeriods = await listWorkPeriods(existingToday.id);
+  if (earlierPeriods.length >= MAX_WORK_PERIODS_PER_DAY) {
+    throw new AppError(
+      "WORK_PERIOD_LIMIT_REACHED",
+      `Today already has ${MAX_WORK_PERIODS_PER_DAY} work periods.`,
+      { max: MAX_WORK_PERIODS_PER_DAY }
+    );
+  }
 
-  return createDailyRecord({ telegramId, workDate: todayDate, recordType: "WORK", startTime, expectedEndTime });
+  // All earlier periods are closed (an open one was rejected above), so the
+  // record's workedMinutes is their total.
+  const workedMinutesSoFar = existingToday.workedMinutes ?? 0;
+  const remainingRequired = Math.max(
+    0,
+    requiredMinutes - existingToday.creditedMinutes - workedMinutesSoFar
+  );
+
+  const { record, period } = await prisma
+    .$transaction(async (tx) => {
+      const record = await updateDailyRecord(
+        existingToday.id,
+        {
+          // The record keeps the day's first start; endTime is cleared while
+          // the new period is open.
+          startTime: existingToday.startTime ?? startTime,
+          endTime: null,
+          expectedEndTime: calcExpectedEndTime(startTime, remainingRequired),
+        },
+        tx
+      );
+      const period = await createWorkPeriod({ dailyRecordId: existingToday.id, startTime }, tx);
+      return { record, period };
+    })
+    .catch(rethrowConcurrentStart);
+
+  return {
+    record,
+    periods: toWorkPeriodViews([...earlierPeriods, period], startTime),
+    workedMinutesSoFar,
+  };
+}
+
+/**
+ * Turns a unique-constraint violation (Prisma P2002) raised by startWorkday's
+ * write into DAILY_RECORD_ALREADY_EXISTS. It means a concurrent /start won the
+ * race — it created today's record first (unique telegramId + workDate) or
+ * opened a period first (at most one open period per record, a partial unique
+ * index in the migrations) — and this transaction rolled back. Anything else
+ * is rethrown unchanged.
+ */
+function rethrowConcurrentStart(err: unknown): never {
+  if (typeof err === "object" && err !== null && (err as { code?: unknown }).code === "P2002") {
+    throw new AppError("DAILY_RECORD_ALREADY_EXISTS", "You have already started today's workday.");
+  }
+  throw err;
 }
 
 /**
@@ -142,7 +215,9 @@ export async function getTodayStatus(
     if (!openRecord.startTime || !openRecord.expectedEndTime) {
       throw new AppError("ACTIVE_RECORD_NOT_FOUND", "Open record is missing time data.");
     }
-    const workedMinutesSoFar = calcWorkedMinutesSoFar(openRecord.startTime);
+    const periods = await listWorkPeriods(openRecord.id);
+    const now = new Date();
+    const workedMinutesSoFar = calcPeriodsWorkedMinutes(periods, now);
     // Non-zero only when the open session is on a half-day absence record.
     const creditedMinutes = openRecord.creditedMinutes;
     const requiredMinutes = requiredMinutesFor(resolvedSettings, openDateStr);
@@ -155,6 +230,7 @@ export async function getTodayStatus(
       workDate: openDateStr,
       startTime: openRecord.startTime.toISOString(),
       expectedEndTime: openRecord.expectedEndTime.toISOString(),
+      periods: toWorkPeriodViews(periods, now),
       workedMinutesSoFar,
       creditedMinutes,
       requiredMinutes,
@@ -170,7 +246,8 @@ export async function getTodayStatus(
 }
 
 /**
- * Closes today's active WORK record using the current time.
+ * Closes today's open work period using the current time. The record's
+ * workedMinutes becomes the total of all of today's periods.
  * V1.1 does not support `/end HH:mm`; previous-day open records must be
  * handled via the `/edit dd-mm` flow.
  *
@@ -178,6 +255,8 @@ export async function getTodayStatus(
  * - USER_SETTINGS_NOT_FOUND       – no settings.
  * - PREVIOUS_RECORD_STILL_OPEN    – open record exists from a prior local date.
  * - DAILY_RECORD_ALREADY_CLOSED   – today's record exists but is already closed.
+ *                                    details.canStartAnotherPeriod says whether
+ *                                    /start could still open another period.
  * - ACTIVE_RECORD_NOT_FOUND       – no open record and no closed record for today.
  */
 export async function endWorkday(
@@ -198,9 +277,15 @@ export async function endWorkday(
   if (openRecord === null) {
     // No open record — check whether today already has a closed one
     if (closedToday !== null) {
+      // Lets the reply only suggest /start when it would actually work: not
+      // on a full-day absence, and not once the period limit is reached.
+      const canStartAnotherPeriod =
+        canLogHours(closedToday) &&
+        (await listWorkPeriods(closedToday.id)).length < MAX_WORK_PERIODS_PER_DAY;
       throw new AppError(
         "DAILY_RECORD_ALREADY_CLOSED",
-        "Today's workday is already closed."
+        "Today's workday is already closed.",
+        { canStartAnotherPeriod }
       );
     }
     throw new AppError(
@@ -218,17 +303,23 @@ export async function endWorkday(
     );
   }
 
-  // Open WORK records always have startTime; guard defensively.
-  if (!openRecord.startTime) {
-    throw new AppError("ACTIVE_RECORD_NOT_FOUND", "Open record is missing start time.");
+  const periods = await listWorkPeriods(openRecord.id);
+  const openPeriod = periods.find((p) => p.endTime === null);
+  // An open record always has an open period; guard defensively.
+  if (!openPeriod) {
+    throw new AppError("ACTIVE_RECORD_NOT_FOUND", "Open record has no open work period.");
   }
   const endTime = new Date();
-  const workedMinutes = calcWorkedMinutes(openRecord.startTime, endTime);
+  const closedPeriods = periods.map((p) => (p.id === openPeriod.id ? { ...p, endTime } : p));
+  const workedMinutes = calcPeriodsWorkedMinutes(closedPeriods, endTime);
   const creditedMinutes = openRecord.creditedMinutes;
   const requiredMinutes = requiredMinutesFor(resolvedSettings, openDateStr);
   const balanceMinutes = calcBalance(workedMinutes + creditedMinutes, requiredMinutes);
 
-  const updated = await updateDailyRecord(openRecord.id, { endTime, workedMinutes });
+  const updated = await prisma.$transaction(async (tx) => {
+    await updateWorkPeriod(openPeriod.id, { endTime }, tx);
+    return updateDailyRecord(openRecord.id, { endTime, workedMinutes }, tx);
+  });
 
   if (!updated.startTime || !updated.expectedEndTime) {
     throw new AppError("ACTIVE_RECORD_NOT_FOUND", "Updated record is missing time data.");
@@ -239,8 +330,9 @@ export async function endWorkday(
     workDate: openDateStr,
     startTime: updated.startTime.toISOString(),
     expectedEndTime: updated.expectedEndTime.toISOString(),
-    endTime: updated.endTime!.toISOString(),
-    workedMinutes: updated.workedMinutes!,
+    endTime: endTime.toISOString(),
+    periods: toWorkPeriodViews(closedPeriods, endTime),
+    workedMinutes,
     creditedMinutes,
     requiredMinutes,
     balanceMinutes,
@@ -267,37 +359,41 @@ export async function getDateRecord(
   const workDateStr = resolveDdMmToDate(ddMm, resolvedSettings.timezone);
   const workDate = localDateToUtcMidnight(workDateStr);
 
-  const prisma = await findRecordByDate(telegramId, workDate);
-
-  const state: RecordLookupState = resolveRecordLookupState(prisma);
+  const found = await findRecordByDate(telegramId, workDate);
   const base = { workDate: workDateStr, displayDate: ddMm, timezone: resolvedSettings.timezone };
 
-  if (state === "NO_RECORD") {
-    return { ...base, state, record: null };
+  if (found === null) {
+    return { ...base, periods: [], state: "NO_RECORD", record: null };
   }
 
+  // Only records with logged hours have periods (full-day absences and half
+  // days without hours have no startTime) — skip the query for the rest.
+  const periods =
+    found.startTime !== null
+      ? toWorkPeriodViews(await listWorkPeriods(found.id), new Date())
+      : [];
+
   const record = {
-    id: prisma!.id,
-    telegramId: prisma!.telegramId,
+    id: found.id,
+    telegramId: found.telegramId,
     workDate: workDateStr,
-    recordType: prisma!.recordType as DailyRecordType,
-    absencePortion: prisma!.absencePortion,
-    startTime: prisma!.startTime?.toISOString() ?? null,
-    expectedEndTime: prisma!.expectedEndTime?.toISOString() ?? null,
-    endTime: prisma!.endTime?.toISOString() ?? null,
-    workedMinutes: prisma!.workedMinutes ?? null,
-    creditedMinutes: prisma!.creditedMinutes,
-    createdAt: prisma!.createdAt.toISOString(),
-    updatedAt: prisma!.updatedAt.toISOString(),
+    recordType: found.recordType as DailyRecordType,
+    absencePortion: found.absencePortion,
+    startTime: found.startTime?.toISOString() ?? null,
+    expectedEndTime: found.expectedEndTime?.toISOString() ?? null,
+    endTime: found.endTime?.toISOString() ?? null,
+    workedMinutes: found.workedMinutes ?? null,
+    creditedMinutes: found.creditedMinutes,
+    createdAt: found.createdAt.toISOString(),
+    updatedAt: found.updatedAt.toISOString(),
   };
 
-  return { ...base, state, record };
+  return { ...base, periods, state: resolveRecordLookupState(found), record };
 }
 
 function resolveRecordLookupState(
-  record: Awaited<ReturnType<typeof findRecordByDate>>
-): RecordLookupState {
-  if (record === null) return "NO_RECORD";
+  record: DailyRecord
+): Exclude<RecordLookupState, "NO_RECORD"> {
   if (record.recordType === "WORK") {
     return record.endTime === null ? "OPEN_WORK_RECORD" : "COMPLETED_WORK_RECORD";
   }

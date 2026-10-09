@@ -135,12 +135,26 @@ describe("SummaryService", async () => {
   let mockGetSettingsOrThrow: ReturnType<typeof mock.fn<any>>;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let mockGetLocalDate: ReturnType<typeof mock.fn<any>>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let mockListWorkPeriods: ReturnType<typeof mock.fn<any>>;
 
   before(() => {
     mockListRecords = mock.fn(async () => []);
     mockFindOpenWorkRecord = mock.fn(async () => null);
     mockGetSettingsOrThrow = mock.fn(async () => SETTINGS);
     mockGetLocalDate = mock.fn(() => FIXED_TODAY);
+    // Default: the open day's single period, started 2 h ago (matches makeOpenRecord).
+    mockListWorkPeriods = mock.fn(async () => [
+      { id: "p1", startTime: new Date(Date.now() - 2 * 60 * 60 * 1000), endTime: null },
+    ]);
+
+    // ── Inject work period repository stub ────────────────────────────────────
+    const periodRepoKey = require.resolve(
+      path.join(__dirname, "../repositories/WorkPeriodRepository")
+    );
+    injectCacheStub(periodRepoKey, {
+      listWorkPeriods: mockListWorkPeriods,
+    });
 
     // ── Inject repository stub ────────────────────────────────────────────────
     const repoKey = require.resolve(
@@ -197,6 +211,7 @@ describe("SummaryService", async () => {
     mockFindOpenWorkRecord?.mock.resetCalls();
     mockGetSettingsOrThrow?.mock.resetCalls();
     mockGetLocalDate?.mock.resetCalls();
+    mockListWorkPeriods?.mock.resetCalls();
   });
 
   // ── getWeekWindow ─────────────────────────────────────────────────────────────
@@ -505,6 +520,25 @@ describe("SummaryService", async () => {
       const result = await getWeekSummary("u1");
       assert.equal(result.creditedMinutes, DAILY_MIN);
       assert.ok(result.workedMinutes >= 119, `expected ~120 live minutes, got ${result.workedMinutes}`);
+    });
+
+    it("counts every period of the open day: earlier closed periods plus the open one so far", async () => {
+      const { workdayDates } = getWeekWindow(SETTINGS.workdays, TIMEZONE);
+      const openDate = workdayDates[workdayDates.length - 1];
+      const firstStart = new Date(Date.now() - 8 * 60 * 60 * 1000);
+
+      mockListRecords.mock.mockImplementationOnce(async () => [
+        { ...makeOpenRecord(openDate), workedMinutes: 300 },
+      ]);
+      // Period 1: 300 min (closed). Period 2: opened 2 h ago.
+      mockListWorkPeriods.mock.mockImplementationOnce(async () => [
+        { id: "p1", startTime: firstStart, endTime: new Date(firstStart.getTime() + 300 * 60_000) },
+        { id: "p2", startTime: new Date(Date.now() - 2 * 60 * 60 * 1000), endTime: null },
+      ]);
+
+      const result = await getWeekSummary("u1");
+      assert.equal(mockListWorkPeriods.mock.calls[0].arguments[0], `r-open-${openDate}`);
+      assert.equal(result.workedMinutes, 420);
     });
   });
 

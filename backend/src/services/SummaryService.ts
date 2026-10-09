@@ -3,7 +3,8 @@ import type { DailyRecord } from "@/generated/prisma/client";
 import { listRecordsByRange, findOpenWorkRecord } from "@/repositories/DailyRecordRepository";
 import { getSettingsOrThrow } from "@/services/SettingsService";
 import { getLocalDate, utcToLocalDate, localDateToUtcMidnight } from "@/utils/DateUtils";
-import { calcWorkedMinutesSoFar } from "@/services/TimeCalculationService";
+import { listWorkPeriods } from "@/repositories/WorkPeriodRepository";
+import { calcPeriodsWorkedMinutes } from "@/services/TimeCalculationService";
 import { AppError } from "@/utils/AppError";
 import type { WorkSummary } from "@shared/types/ViewTypes";
 import { getWeekWindow, getMonthWindow } from "@/utils/dateRangeUtils";
@@ -96,25 +97,26 @@ async function assertNoPreviousOpenRecord(
 
 /**
  * If there is an open record whose local date falls within `workdayDates`,
- * replaces its `workedMinutes` in the array with the live worked-so-far value.
+ * replaces its `workedMinutes` in the array with the live worked-so-far value:
+ * all of that day's periods, the open one counted up to now.
  *
  * `records` comes from `listRecordsByRange` and already includes open records
  * (no endTime filter). This keeps `aggregateSummary` side-effect-free.
  */
-function enrichWithOpenDay(
+async function enrichWithOpenDay(
   records: DailyRecord[],
   workdayDates: string[],
   timezone: string
-): DailyRecord[] {
+): Promise<DailyRecord[]> {
   // An open session has a start time and no end time. Full-day absence
   // records also have endTime=null (but no startTime), so both are checked.
   const openRecord = records.find((r) => r.startTime !== null && r.endTime === null);
-  if (openRecord === undefined || openRecord.startTime === null) return records;
+  if (openRecord === undefined) return records;
 
   const openDateStr = utcToLocalDate(openRecord.workDate, timezone);
   if (!workdayDates.includes(openDateStr)) return records;
 
-  const liveMinutes = calcWorkedMinutesSoFar(openRecord.startTime);
+  const liveMinutes = calcPeriodsWorkedMinutes(await listWorkPeriods(openRecord.id));
   return records.map((r) =>
     r.id === openRecord.id ? { ...r, workedMinutes: liveMinutes } : r
   );
@@ -157,7 +159,7 @@ async function buildSummary<W extends { workdayDates: string[] }>(
         )
       : [];
 
-  const records = enrichWithOpenDay(rawRecords, win.workdayDates, settings.timezone);
+  const records = await enrichWithOpenDay(rawRecords, win.workdayDates, settings.timezone);
   const totals = aggregateSummary(
     win.workdayDates,
     records,

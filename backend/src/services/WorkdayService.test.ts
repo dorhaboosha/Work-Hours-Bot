@@ -58,6 +58,19 @@ function makeTodayOpenRecord(startTime = START_1H_AGO) {
   };
 }
 
+function makePeriod(startTime: Date, endTime: Date | null, id = "p1") {
+  return {
+    id,
+    dailyRecordId: "r1",
+    startTime,
+    endTime,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+}
+
+const MIN = 60_000;
+
 function makePrevDayOpenRecord() {
   return {
     ...makeTodayOpenRecord(new Date(Date.now() - 26 * 60 * 60 * 1000)),
@@ -89,6 +102,18 @@ describe("WorkdayService", async () => {
   let mockGetSettingsOrThrow: ReturnType<typeof mock.fn<any>>;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let mockGetLocalDate: ReturnType<typeof mock.fn<any>>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let mockListWorkPeriods: ReturnType<typeof mock.fn<any>>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let mockCreateWorkPeriod: ReturnType<typeof mock.fn<any>>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let mockUpdateWorkPeriod: ReturnType<typeof mock.fn<any>>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let mockTransaction: ReturnType<typeof mock.fn<any>>;
+
+  // Distinguishable marker so tests can assert the writes inside a
+  // transaction received the same `tx` handle passed to prisma.$transaction().
+  const FAKE_TX = { __fakeTx: true };
 
   let realResolveDdMmToDate: (ddMm: string, tz: string) => string;
 
@@ -128,6 +153,38 @@ describe("WorkdayService", async () => {
     );
     mockGetSettingsOrThrow = mock.fn(async () => SETTINGS);
     mockGetLocalDate = mock.fn(() => FIXED_TODAY);
+    // Default: today's single open period, matching makeTodayOpenRecord().
+    mockListWorkPeriods = mock.fn(async () => [makePeriod(START_1H_AGO, null)]);
+    mockCreateWorkPeriod = mock.fn(
+      async (input: { dailyRecordId: string; startTime: Date }) => ({
+        ...makePeriod(input.startTime, null, "p-new"),
+        dailyRecordId: input.dailyRecordId,
+      })
+    );
+    mockUpdateWorkPeriod = mock.fn(async (id: string, input: Record<string, unknown>) => ({
+      ...makePeriod(START_1H_AGO, null, id),
+      ...input,
+    }));
+    mockTransaction = mock.fn(async (fn: (tx: unknown) => Promise<unknown>) => fn(FAKE_TX));
+
+    // Inject PrismaClient stub (start/end write inside prisma.$transaction) —
+    // avoids loading the real client, which validates env vars.
+    const prismaClientKey = require.resolve(
+      path.join(__dirname, "../config/PrismaClient")
+    );
+    injectCacheStub(prismaClientKey, {
+      prisma: { $transaction: mockTransaction },
+    });
+
+    // Inject work period repository stub
+    const periodRepoKey = require.resolve(
+      path.join(__dirname, "../repositories/WorkPeriodRepository")
+    );
+    injectCacheStub(periodRepoKey, {
+      listWorkPeriods: mockListWorkPeriods,
+      createWorkPeriod: mockCreateWorkPeriod,
+      updateWorkPeriod: mockUpdateWorkPeriod,
+    });
 
     // Inject repository stub
     const repoKey = require.resolve(
@@ -185,18 +242,40 @@ describe("WorkdayService", async () => {
     mockUpdateDailyRecord?.mock.resetCalls();
     mockGetSettingsOrThrow?.mock.resetCalls();
     mockGetLocalDate?.mock.resetCalls();
+    mockListWorkPeriods?.mock.resetCalls();
+    mockCreateWorkPeriod?.mock.resetCalls();
+    mockUpdateWorkPeriod?.mock.resetCalls();
+    mockTransaction?.mock.resetCalls();
   });
 
   // ── startWorkday ─────────────────────────────────────────────────────────────
 
   describe("startWorkday – happy path", () => {
     it("creates a new record with the correct telegramId and workDate", async () => {
-      const record = await startWorkday("user1");
+      const { record } = await startWorkday("user1");
 
       assert.equal(mockCreateDailyRecord.mock.calls.length, 1);
       const arg = mockCreateDailyRecord.mock.calls[0].arguments[0];
       assert.equal(arg.telegramId, "user1");
       assert.equal(record.telegramId, "user1");
+    });
+
+    it("opens period 1 on the new record, in the same transaction", async () => {
+      const result = await startWorkday("user1");
+
+      assert.equal(mockTransaction.mock.calls.length, 1);
+      assert.equal(mockCreateDailyRecord.mock.calls[0].arguments[1], FAKE_TX);
+      assert.equal(mockCreateWorkPeriod.mock.calls.length, 1);
+      const [periodInput, periodClient] = mockCreateWorkPeriod.mock.calls[0].arguments;
+      assert.equal(periodInput.dailyRecordId, "r-new");
+      assert.equal(periodClient, FAKE_TX);
+      assert.equal(
+        periodInput.startTime.getTime(),
+        mockCreateDailyRecord.mock.calls[0].arguments[0].startTime.getTime()
+      );
+      assert.equal(result.periods.length, 1);
+      assert.equal(result.periods[0].endTime, null);
+      assert.equal(result.workedMinutesSoFar, 0);
     });
 
     it("sets expectedEndTime = startTime + dailyRequiredMinutes", async () => {
@@ -248,19 +327,136 @@ describe("WorkdayService", async () => {
     });
   });
 
-  describe("startWorkday – DAILY_RECORD_ALREADY_EXISTS (closed today)", () => {
-    it("throws when today has a closed record (no open record)", async () => {
-      mockFindRecordByDate.mock.mockImplementationOnce(
-        async () => ({ ...makeTodayOpenRecord(), endTime: new Date(), workedMinutes: 60 })
+  describe("startWorkday – a concurrent /start wins the race", () => {
+    const uniqueViolation = () =>
+      Object.assign(new Error("Unique constraint failed"), { code: "P2002" });
+
+    it("maps a unique violation while opening another period to DAILY_RECORD_ALREADY_EXISTS", async () => {
+      mockFindRecordByDate.mock.mockImplementationOnce(async () => ({
+        ...makeTodayOpenRecord(START_10H_AGO),
+        endTime: START_1H_AGO,
+        workedMinutes: 540,
+      }));
+      mockListWorkPeriods.mock.mockImplementationOnce(async () => [
+        makePeriod(START_10H_AGO, START_1H_AGO),
+      ]);
+      mockCreateWorkPeriod.mock.mockImplementationOnce(async () => {
+        throw uniqueViolation();
+      });
+
+      await assert.rejects(() => startWorkday("user1"), (err: unknown) => {
+        assert.equal((err as { code: string }).code, "DAILY_RECORD_ALREADY_EXISTS");
+        return true;
+      });
+    });
+
+    it("maps a unique violation while creating today's record to DAILY_RECORD_ALREADY_EXISTS", async () => {
+      mockCreateDailyRecord.mock.mockImplementationOnce(async () => {
+        throw uniqueViolation();
+      });
+
+      await assert.rejects(() => startWorkday("user1"), (err: unknown) => {
+        assert.equal((err as { code: string }).code, "DAILY_RECORD_ALREADY_EXISTS");
+        return true;
+      });
+    });
+
+    it("rethrows any other database error unchanged", async () => {
+      const otherError = Object.assign(new Error("Connection lost"), { code: "P1001" });
+      mockCreateDailyRecord.mock.mockImplementationOnce(async () => {
+        throw otherError;
+      });
+
+      await assert.rejects(() => startWorkday("user1"), (err: unknown) => err === otherError);
+    });
+  });
+
+  describe("startWorkday – another period on a closed day", () => {
+    // Period 1: 6h ago → 1h ago (300 min), so the day is closed with 300 worked.
+    const FIRST_START = new Date(Date.now() - 6 * 60 * MIN);
+    const FIRST_END = new Date(Date.now() - 60 * MIN);
+
+    function makeTodayClosedRecord(workedMinutes = 300) {
+      return {
+        ...makeTodayOpenRecord(FIRST_START),
+        endTime: FIRST_END,
+        workedMinutes,
+      };
+    }
+
+    it("opens period 2 on the same record instead of creating a new one", async () => {
+      mockFindRecordByDate.mock.mockImplementationOnce(async () => makeTodayClosedRecord());
+      mockListWorkPeriods.mock.mockImplementationOnce(async () => [
+        makePeriod(FIRST_START, FIRST_END),
+      ]);
+      mockUpdateDailyRecord.mock.mockImplementationOnce(
+        async (id: string, input: Record<string, unknown>) => ({
+          ...makeTodayClosedRecord(),
+          id,
+          ...input,
+        })
+      );
+
+      const result = await startWorkday("user1");
+
+      assert.equal(mockCreateDailyRecord.mock.calls.length, 0);
+      assert.equal(mockUpdateDailyRecord.mock.calls.length, 1);
+      const [id, input, client] = mockUpdateDailyRecord.mock.calls[0].arguments;
+      assert.equal(id, "r1");
+      assert.equal(client, FAKE_TX);
+      // The record keeps the day's first start and is reopened.
+      assert.equal(input.startTime.getTime(), FIRST_START.getTime());
+      assert.equal(input.endTime, null);
+
+      assert.equal(mockCreateWorkPeriod.mock.calls.length, 1);
+      const [periodInput, periodClient] = mockCreateWorkPeriod.mock.calls[0].arguments;
+      assert.equal(periodInput.dailyRecordId, "r1");
+      assert.equal(periodClient, FAKE_TX);
+      // Expected end covers only what is still missing: 480 - 300 = 180 minutes.
+      assert.equal(
+        input.expectedEndTime.getTime() - periodInput.startTime.getTime(),
+        180 * MIN
+      );
+
+      assert.equal(result.workedMinutesSoFar, 300);
+      assert.equal(result.periods.length, 2);
+      assert.equal(result.periods[0].workedMinutes, 300);
+      assert.equal(result.periods[1].endTime, null);
+    });
+
+    it("sets expectedEndTime = now when the day's required time is already covered", async () => {
+      mockFindRecordByDate.mock.mockImplementationOnce(async () => makeTodayClosedRecord(500));
+      mockListWorkPeriods.mock.mockImplementationOnce(async () => [
+        makePeriod(FIRST_START, FIRST_END),
+      ]);
+
+      await startWorkday("user1");
+
+      const input = mockUpdateDailyRecord.mock.calls[0].arguments[1];
+      const periodInput = mockCreateWorkPeriod.mock.calls[0].arguments[0];
+      assert.equal(input.expectedEndTime.getTime(), periodInput.startTime.getTime());
+    });
+
+    it("throws WORK_PERIOD_LIMIT_REACHED when today already has 4 periods, and writes nothing", async () => {
+      mockFindRecordByDate.mock.mockImplementationOnce(async () => makeTodayClosedRecord());
+      mockListWorkPeriods.mock.mockImplementationOnce(async () =>
+        [0, 1, 2, 3].map((i) =>
+          makePeriod(
+            new Date(FIRST_START.getTime() + i * 60 * MIN),
+            new Date(FIRST_START.getTime() + (i * 60 + 30) * MIN),
+            `p${i}`
+          )
+        )
       );
 
       await assert.rejects(() => startWorkday("user1"), (err: unknown) => {
-        assert.equal(
-          (err as { code: string }).code,
-          "DAILY_RECORD_ALREADY_EXISTS"
-        );
+        assert.equal((err as { code: string }).code, "WORK_PERIOD_LIMIT_REACHED");
+        assert.equal((err as { details?: Record<string, unknown> }).details?.["max"], 4);
         return true;
       });
+      assert.equal(mockTransaction.mock.calls.length, 0);
+      assert.equal(mockUpdateDailyRecord.mock.calls.length, 0);
+      assert.equal(mockCreateWorkPeriod.mock.calls.length, 0);
     });
   });
 
@@ -293,6 +489,7 @@ describe("WorkdayService", async () => {
         mockFindRecordByDate.mock.mockImplementationOnce(
           async () => makeTodayAbsence(recordType, "HALF", 240)
         );
+        mockListWorkPeriods.mock.mockImplementationOnce(async () => []);
         mockUpdateDailyRecord.mock.mockImplementationOnce(
           async (id: string, input: Record<string, unknown>) => ({
             ...makeTodayAbsence(recordType, "HALF", 240),
@@ -301,14 +498,17 @@ describe("WorkdayService", async () => {
           })
         );
 
-        const record = await startWorkday("user1");
+        const { record, periods } = await startWorkday("user1");
 
         assert.equal(mockCreateDailyRecord.mock.calls.length, 0);
         assert.equal(mockUpdateDailyRecord.mock.calls.length, 1);
         const [id, input] = mockUpdateDailyRecord.mock.calls[0].arguments;
         assert.equal(id, "r-abs");
         // Only the session fields are written — absence, credit and debit are kept.
-        assert.deepEqual(Object.keys(input).sort(), ["expectedEndTime", "startTime"]);
+        assert.deepEqual(Object.keys(input).sort(), ["endTime", "expectedEndTime", "startTime"]);
+        assert.equal(input.endTime, null);
+        assert.equal(mockCreateWorkPeriod.mock.calls[0].arguments[0].dailyRecordId, "r-abs");
+        assert.equal(periods.length, 1);
         // Expected end covers only the remaining 480 - 240 = 240 minutes.
         assert.equal(
           (input.expectedEndTime as Date).getTime() - (input.startTime as Date).getTime(),
@@ -336,19 +536,31 @@ describe("WorkdayService", async () => {
       assert.equal(mockUpdateDailyRecord.mock.calls.length, 0);
     });
 
-    it("throws DAILY_RECORD_ALREADY_EXISTS for a half day whose hours were already logged", async () => {
+    it("opens another period on a half day whose hours were already logged", async () => {
+      const firstStart = new Date(Date.now() - 4 * 60 * MIN);
+      const firstEnd = new Date(Date.now() - 2 * 60 * MIN);
       mockFindRecordByDate.mock.mockImplementationOnce(async () => ({
         ...makeTodayAbsence("VACATION", "HALF", 240),
-        startTime: new Date(Date.now() - 4 * 60 * 60 * 1000),
-        endTime: new Date(),
-        workedMinutes: 240,
+        startTime: firstStart,
+        endTime: firstEnd,
+        workedMinutes: 120,
       }));
+      mockListWorkPeriods.mock.mockImplementationOnce(async () => [
+        makePeriod(firstStart, firstEnd),
+      ]);
 
-      await assert.rejects(() => startWorkday("user1"), (err: unknown) => {
-        assert.equal((err as { code: string }).code, "DAILY_RECORD_ALREADY_EXISTS");
-        return true;
-      });
-      assert.equal(mockUpdateDailyRecord.mock.calls.length, 0);
+      const { periods, workedMinutesSoFar } = await startWorkday("user1");
+
+      const input = mockUpdateDailyRecord.mock.calls[0].arguments[1];
+      const periodInput = mockCreateWorkPeriod.mock.calls[0].arguments[0];
+      // Still missing: 480 required - 240 credited - 120 worked = 120 minutes.
+      assert.equal(
+        input.expectedEndTime.getTime() - periodInput.startTime.getTime(),
+        120 * MIN
+      );
+      assert.equal(input.startTime.getTime(), firstStart.getTime());
+      assert.equal(workedMinutesSoFar, 120);
+      assert.equal(periods.length, 2);
     });
   });
 
@@ -374,10 +586,43 @@ describe("WorkdayService", async () => {
       mockFindOpenWorkRecord.mock.mockImplementationOnce(
         async () => makeTodayOpenRecord(START_10H_AGO)
       );
+      mockListWorkPeriods.mock.mockImplementationOnce(async () => [
+        makePeriod(START_10H_AGO, null),
+      ]);
 
       const status = await getTodayStatus("user1");
 
       assert.equal(status.remainingMinutes, 0);
+    });
+
+    it("sums every period of the day, counting the open one up to now", async () => {
+      // Period 1: 300 min (closed). Period 2: opened 1h ago.
+      const firstStart = new Date(Date.now() - 8 * 60 * MIN);
+      const firstEnd = new Date(firstStart.getTime() + 300 * MIN);
+      mockFindOpenWorkRecord.mock.mockImplementationOnce(async () => ({
+        ...makeTodayOpenRecord(firstStart),
+        workedMinutes: 300,
+      }));
+      mockListWorkPeriods.mock.mockImplementationOnce(async () => [
+        makePeriod(firstStart, firstEnd, "p1"),
+        makePeriod(START_1H_AGO, null, "p2"),
+      ]);
+
+      const status = await getTodayStatus("user1");
+
+      assert.equal(status.workedMinutesSoFar, 360);
+      assert.equal(status.remainingMinutes, 480 - 360);
+      assert.equal(status.startTime, firstStart.toISOString());
+      assert.deepEqual(
+        status.periods.map((p: { workedMinutes: number; endTime: string | null }) => [
+          p.workedMinutes,
+          p.endTime,
+        ]),
+        [
+          [300, firstEnd.toISOString()],
+          [60, null],
+        ]
+      );
     });
 
     it("counts credited minutes toward remaining time for an open session on a half-day absence", async () => {
@@ -472,6 +717,55 @@ describe("WorkdayService", async () => {
       const updateArg = mockUpdateDailyRecord.mock.calls[0].arguments[1];
       assert.ok(updateArg.endTime instanceof Date);
     });
+
+    it("closes only the open period and stores the total of all periods, in one transaction", async () => {
+      // Period 1: 300 min (closed). Period 2: opened 1h ago → 60 min at /end.
+      const firstStart = new Date(Date.now() - 8 * 60 * MIN);
+      const firstEnd = new Date(firstStart.getTime() + 300 * MIN);
+      mockFindOpenWorkRecord.mock.mockImplementationOnce(async () => ({
+        ...makeTodayOpenRecord(firstStart),
+        workedMinutes: 300,
+      }));
+      mockListWorkPeriods.mock.mockImplementationOnce(async () => [
+        makePeriod(firstStart, firstEnd, "p1"),
+        makePeriod(START_1H_AGO, null, "p2"),
+      ]);
+
+      const result = await endWorkday("user1");
+
+      assert.equal(mockTransaction.mock.calls.length, 1);
+      assert.equal(mockUpdateWorkPeriod.mock.calls.length, 1);
+      const [periodId, periodInput, periodClient] = mockUpdateWorkPeriod.mock.calls[0].arguments;
+      assert.equal(periodId, "p2");
+      assert.equal(periodClient, FAKE_TX);
+
+      const [, recordInput, recordClient] = mockUpdateDailyRecord.mock.calls[0].arguments;
+      assert.equal(recordClient, FAKE_TX);
+      assert.equal(recordInput.endTime.getTime(), periodInput.endTime.getTime());
+      assert.equal(recordInput.workedMinutes, 360);
+
+      assert.equal(result.workedMinutes, 360);
+      assert.equal(result.balanceMinutes, 360 - 480);
+      assert.equal(result.endTime, periodInput.endTime.toISOString());
+      assert.deepEqual(
+        result.periods.map((p: { workedMinutes: number }) => p.workedMinutes),
+        [300, 60]
+      );
+      assert.ok(result.periods.every((p: { endTime: string | null }) => p.endTime !== null));
+    });
+
+    it("throws ACTIVE_RECORD_NOT_FOUND when the open record has no open period, and writes nothing", async () => {
+      mockFindOpenWorkRecord.mock.mockImplementationOnce(async () => makeTodayOpenRecord());
+      mockListWorkPeriods.mock.mockImplementationOnce(async () => [
+        makePeriod(START_10H_AGO, START_1H_AGO),
+      ]);
+
+      await assert.rejects(() => endWorkday("user1"), (err: unknown) => {
+        assert.equal((err as { code: string }).code, "ACTIVE_RECORD_NOT_FOUND");
+        return true;
+      });
+      assert.equal(mockTransaction.mock.calls.length, 0);
+    });
   });
 
   describe("endWorkday – today guards", () => {
@@ -498,6 +792,59 @@ describe("WorkdayService", async () => {
         assert.equal(
           (err as { code: string }).code,
           "DAILY_RECORD_ALREADY_CLOSED"
+        );
+        // Under the period limit — the reply can suggest /start.
+        assert.equal(
+          (err as { details?: Record<string, unknown> }).details?.["canStartAnotherPeriod"],
+          true
+        );
+        return true;
+      });
+    });
+
+    it("reports canStartAnotherPeriod=false once today has the maximum number of periods", async () => {
+      mockFindRecordByDate.mock.mockImplementationOnce(async () => ({
+        ...makeTodayOpenRecord(START_10H_AGO),
+        endTime: START_1H_AGO,
+        workedMinutes: 120,
+      }));
+      mockListWorkPeriods.mock.mockImplementationOnce(async () =>
+        [0, 1, 2, 3].map((i) =>
+          makePeriod(
+            new Date(START_10H_AGO.getTime() + i * 60 * MIN),
+            new Date(START_10H_AGO.getTime() + (i * 60 + 30) * MIN),
+            `p${i}`
+          )
+        )
+      );
+
+      await assert.rejects(() => endWorkday("user1"), (err: unknown) => {
+        assert.equal((err as { code: string }).code, "DAILY_RECORD_ALREADY_CLOSED");
+        assert.equal(
+          (err as { details?: Record<string, unknown> }).details?.["canStartAnotherPeriod"],
+          false
+        );
+        return true;
+      });
+    });
+
+    it("reports canStartAnotherPeriod=false on a full-day absence", async () => {
+      mockFindRecordByDate.mock.mockImplementationOnce(async () => ({
+        ...makeTodayOpenRecord(),
+        recordType: "SICK",
+        absencePortion: "FULL",
+        startTime: null,
+        expectedEndTime: null,
+        endTime: null,
+        workedMinutes: 0,
+        creditedMinutes: 480,
+      }));
+
+      await assert.rejects(() => endWorkday("user1"), (err: unknown) => {
+        assert.equal((err as { code: string }).code, "DAILY_RECORD_ALREADY_CLOSED");
+        assert.equal(
+          (err as { details?: Record<string, unknown> }).details?.["canStartAnotherPeriod"],
+          false
         );
         return true;
       });
@@ -632,6 +979,37 @@ describe("WorkdayService", async () => {
 
       assert.equal(result.state, "NO_RECORD");
       assert.equal(result.record, null);
+      assert.deepEqual(result.periods, []);
+      assert.equal(mockListWorkPeriods.mock.calls.length, 0);
+    });
+
+    it("returns every period of a completed day, in order, with each period's minutes", async () => {
+      const record = makeCompletedWorkRecord();
+      mockFindRecordByDate.mock.mockImplementationOnce(async () => record);
+      // 06:00–11:00 (300) and 12:00–15:30 (210) UTC
+      mockListWorkPeriods.mock.mockImplementationOnce(async () => [
+        makePeriod(new Date("2026-06-12T06:00:00Z"), new Date("2026-06-12T11:00:00Z"), "p1"),
+        makePeriod(new Date("2026-06-12T12:00:00Z"), new Date("2026-06-12T15:30:00Z"), "p2"),
+      ]);
+
+      const result = await getDateRecord("user1", "12-06");
+
+      assert.equal(result.state, "COMPLETED_WORK_RECORD");
+      assert.equal(mockListWorkPeriods.mock.calls[0].arguments[0], "r-completed");
+      assert.deepEqual(result.periods, [
+        { startTime: "2026-06-12T06:00:00.000Z", endTime: "2026-06-12T11:00:00.000Z", workedMinutes: 300 },
+        { startTime: "2026-06-12T12:00:00.000Z", endTime: "2026-06-12T15:30:00.000Z", workedMinutes: 210 },
+      ]);
+    });
+
+    it("returns no periods (and skips the query) for an absence without logged hours", async () => {
+      mockFindRecordByDate.mock.mockImplementationOnce(async () => makeVacationRecord());
+
+      const result = await getDateRecord("user1", "12-06");
+
+      assert.equal(result.state, "ABSENCE_RECORD");
+      assert.deepEqual(result.periods, []);
+      assert.equal(mockListWorkPeriods.mock.calls.length, 0);
     });
 
     it("resolves dd-mm to the correct workDate and passes the matching UTC Date to findRecordByDate", async () => {

@@ -9,17 +9,31 @@ import type {
   TelegramId,
 } from "./CoreTypes";
 
+// --- WorkPeriodView ---
+
+/** One start/end period of a day (a day can have several, e.g. office then home). */
+export interface WorkPeriodView {
+  /** UTC timestamp */
+  startTime: string;
+  /** UTC timestamp. null while the period is still open */
+  endTime: string | null;
+  /** Minutes worked in this period — counted up to now while it is open */
+  workedMinutes: number;
+}
+
 // --- WorkdayStatus ---
 
 /** Returned by the /status command. All time calculations are live (not stored). */
 export interface WorkdayStatus {
   /** YYYY-MM-DD */
   workDate: string;
-  /** UTC timestamp */
+  /** UTC timestamp of the day's first start */
   startTime: string;
   /** UTC timestamp */
   expectedEndTime: string;
-  /** Integer >= 0, computed from startTime to now */
+  /** Today's periods in start order; the last one is open */
+  periods: WorkPeriodView[];
+  /** Integer >= 0: all of today's periods, the open one counted up to now */
   workedMinutesSoFar: number;
   /** Minutes already credited to the day by a half-day absence (0 on a regular workday) */
   creditedMinutes: number;
@@ -38,13 +52,15 @@ export interface EndWorkdayResult {
   telegramId: TelegramId;
   /** YYYY-MM-DD */
   workDate: string;
-  /** UTC timestamp */
+  /** UTC timestamp of the day's first start */
   startTime: string;
   /** UTC timestamp */
   expectedEndTime: string;
   /** UTC timestamp */
   endTime: string;
-  /** Integer >= 0 */
+  /** Today's periods in start order, all closed; the last one was just ended */
+  periods: WorkPeriodView[];
+  /** Integer >= 0: the total of all of today's periods */
   workedMinutes: number;
   /** Minutes credited to the day by a half-day absence (0 on a regular workday) */
   creditedMinutes: number;
@@ -61,9 +77,13 @@ export interface EditDayOptions {
   workDate: string;
   /** dd-mm */
   displayDate: string;
+  /** IANA timezone resolved from user settings */
+  timezone: string;
   state: EditRecordState;
   /** null when state is NO_RECORD */
   record: DailyRecord | null;
+  /** The date's work periods in start order (an open one counted up to now); empty when no hours are logged */
+  periods: WorkPeriodView[];
   allowedActions: EditAction[];
 }
 
@@ -86,8 +106,10 @@ export interface EditWorkdayResult {
   expectedEndTime?: string | null;
   /** UTC timestamp. null for full-day absence records */
   endTime?: string | null;
-  /** Actual worked minutes, integer >= 0 */
+  /** Actual worked minutes (the total of all periods), integer >= 0 */
   workedMinutes: number;
+  /** The date's work periods after the edit, in start order; empty when no hours are logged */
+  periods: WorkPeriodView[];
   /** Minutes credited by the absence (leave or company-paid time). 0 for WORK records. */
   creditedMinutes: number;
   requiredMinutes: number;
@@ -127,6 +149,8 @@ type DateRecordLookupBase = {
   displayDate: string;
   /** IANA timezone resolved from user settings */
   timezone: string;
+  /** The day's work periods in start order (an open one counted up to now); empty when no hours are logged */
+  periods: WorkPeriodView[];
 };
 
 /**

@@ -1,7 +1,12 @@
 import type { Context } from "telegraf";
 import { endWorkday } from "@/services/WorkdayService";
 import { getSettingsOrThrow } from "@/services/SettingsService";
-import { formatTime, formatMinutesAsDuration, formatBalance } from "@/bot/utils/formatMessage";
+import {
+  formatTime,
+  formatMinutesAsDuration,
+  formatBalance,
+  formatWorkPeriodsBlock,
+} from "@/bot/utils/formatMessage";
 import { handleBotError } from "@/bot/utils/handleBotError";
 import { t } from "@/i18n";
 
@@ -13,8 +18,18 @@ export async function handleEnd(ctx: Context): Promise<void> {
     const settings = await getSettingsOrThrow(telegramId);
     const result = await endWorkday(telegramId, settings);
 
-    const startStr = formatTime(result.startTime, settings.timezone);
-    const endStr = formatTime(result.endTime, settings.timezone);
+    // One period → "Workday ended" with Start/End lines; several → the
+    // numbered list, titled with the period that was just ended (the last).
+    const multiPeriod = result.periods.length > 1;
+    const title = multiPeriod
+      ? t("end.titlePeriod", { periodNumber: result.periods.length })
+      : t("end.titleSingle");
+    const periodsBlock = multiPeriod
+      ? formatWorkPeriodsBlock(result.periods, settings.timezone)
+      : t("end.startEndLines", {
+          startStr: formatTime(result.startTime, settings.timezone),
+          endStr: formatTime(result.endTime, settings.timezone),
+        });
     const workedStr = formatMinutesAsDuration(result.workedMinutes);
     const requiredStr = formatMinutesAsDuration(result.requiredMinutes);
     const balanceStr = formatBalance(result.balanceMinutes);
@@ -26,9 +41,9 @@ export async function handleEnd(ctx: Context): Promise<void> {
 
     await ctx.reply(
       t("end.success", {
+        title,
         workDate: result.workDate,
-        startStr,
-        endStr,
+        periodsBlock,
         workedStr,
         creditedLine,
         requiredStr,
