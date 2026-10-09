@@ -1,6 +1,7 @@
 import { utcToLocalTime } from "@/utils/DateUtils";
 import type { UserSettings } from "@/generated/prisma/client";
 import type { Weekday } from "@shared/types/CoreTypes";
+import type { WorkPeriodView } from "@shared/types/ViewTypes";
 import { t, formatWorkdays } from "@/i18n";
 import {
   formatMinutesAsDuration,
@@ -17,6 +18,24 @@ export { formatMinutesAsDuration, formatBalance, formatDecimalDays };
  */
 export function formatTime(utc: Date | string, timezone: string): string {
   return utcToLocalTime(utc, timezone);
+}
+
+/**
+ * Renders a day's work periods as numbered lines, in order:
+ * "1. *08:00–13:00* (05:00)" for a closed period, "2. *15:00–now* (01:10)"
+ * for the open one.
+ */
+export function formatWorkPeriodsList(periods: WorkPeriodView[], timezone: string): string {
+  return periods
+    .map((p, i) =>
+      t(p.endTime === null ? "workPeriods.openLine" : "workPeriods.closedLine", {
+        periodNumber: i + 1,
+        startStr: formatTime(p.startTime, timezone),
+        endStr: p.endTime === null ? "" : formatTime(p.endTime, timezone),
+        durationStr: formatMinutesAsDuration(p.workedMinutes),
+      })
+    )
+    .join("\n");
 }
 
 /** Renders the settings block shown by /settings, /settings_edit and /setup. */

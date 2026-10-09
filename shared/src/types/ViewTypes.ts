@@ -9,17 +9,31 @@ import type {
   TelegramId,
 } from "./CoreTypes";
 
+// --- WorkPeriodView ---
+
+/** One start/end period of a day (a day can have several, e.g. office then home). */
+export interface WorkPeriodView {
+  /** UTC timestamp */
+  startTime: string;
+  /** UTC timestamp. null while the period is still open */
+  endTime: string | null;
+  /** Minutes worked in this period — counted up to now while it is open */
+  workedMinutes: number;
+}
+
 // --- WorkdayStatus ---
 
 /** Returned by the /status command. All time calculations are live (not stored). */
 export interface WorkdayStatus {
   /** YYYY-MM-DD */
   workDate: string;
-  /** UTC timestamp */
+  /** UTC timestamp of the day's first start */
   startTime: string;
   /** UTC timestamp */
   expectedEndTime: string;
-  /** Integer >= 0, computed from startTime to now */
+  /** Today's periods in start order; the last one is open */
+  periods: WorkPeriodView[];
+  /** Integer >= 0: all of today's periods, the open one counted up to now */
   workedMinutesSoFar: number;
   /** Minutes already credited to the day by a half-day absence (0 on a regular workday) */
   creditedMinutes: number;
@@ -38,13 +52,15 @@ export interface EndWorkdayResult {
   telegramId: TelegramId;
   /** YYYY-MM-DD */
   workDate: string;
-  /** UTC timestamp */
+  /** UTC timestamp of the day's first start */
   startTime: string;
   /** UTC timestamp */
   expectedEndTime: string;
   /** UTC timestamp */
   endTime: string;
-  /** Integer >= 0 */
+  /** Today's periods in start order, all closed; the last one was just ended */
+  periods: WorkPeriodView[];
+  /** Integer >= 0: the total of all of today's periods */
   workedMinutes: number;
   /** Minutes credited to the day by a half-day absence (0 on a regular workday) */
   creditedMinutes: number;

@@ -26,12 +26,19 @@ export async function handleBotError(ctx: Context, err: unknown): Promise<void> 
         msg = t("errors.activeRecordNotFound");
         break;
       case "DAILY_RECORD_ALREADY_CLOSED":
-        msg = t("errors.dailyRecordAlreadyClosed");
+        msg = t(
+          err.details?.["canStartAnotherPeriod"] === false
+            ? "errors.dailyRecordAlreadyClosedNoMorePeriods"
+            : "errors.dailyRecordAlreadyClosed"
+        );
         break;
       case "DAY_MARKED_AS_ABSENCE":
         msg = t("errors.dayMarkedAsAbsence", {
           absenceLabel: t(`absenceType.${String(err.details?.["recordType"])}`),
         });
+        break;
+      case "WORK_PERIOD_LIMIT_REACHED":
+        msg = t("errors.workPeriodLimitReached", { max: err.details?.["max"] });
         break;
       case "PREVIOUS_RECORD_STILL_OPEN":
         msg = t("errors.previousRecordStillOpen", { message: escapeMarkdown(err.message) });

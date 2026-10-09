@@ -67,10 +67,11 @@ export async function findRecordByDate(
 }
 
 export async function createDailyRecord(
-  input: CreateDailyRecordInput
+  input: CreateDailyRecordInput,
+  client: PrismaClientOrTx = prisma
 ): Promise<DailyRecord> {
   const { telegramId, workDate, recordType, startTime, expectedEndTime, workedMinutes } = input;
-  return prisma.dailyRecord.create({
+  return client.dailyRecord.create({
     data: {
       telegramId,
       workDate,
@@ -84,9 +85,10 @@ export async function createDailyRecord(
 
 export async function updateDailyRecord(
   id: string,
-  input: UpdateDailyRecordInput
+  input: UpdateDailyRecordInput,
+  client: PrismaClientOrTx = prisma
 ): Promise<DailyRecord> {
-  return prisma.dailyRecord.update({
+  return client.dailyRecord.update({
     where: { id },
     data: input,
   });
