@@ -59,7 +59,8 @@ export interface StartWorkdayResult {
  *
  * Guards (checked in order):
  * - PREVIOUS_RECORD_STILL_OPEN  – an open record exists from a prior local date.
- * - DAILY_RECORD_ALREADY_EXISTS – a period is already open today.
+ * - DAILY_RECORD_ALREADY_EXISTS – a period is already open today (including one
+ *                                  opened by a concurrent /start).
  * - DAY_MARKED_AS_ABSENCE       – today is a full-day absence (no hours can be
  *                                  logged on it). details.recordType holds the type.
  * - WORK_PERIOD_LIMIT_REACHED   – today already has MAX_WORK_PERIODS_PER_DAY
@@ -106,14 +107,16 @@ export async function startWorkday(
 
   if (existingToday === null) {
     const expectedEndTime = calcExpectedEndTime(startTime, requiredMinutes);
-    const { record, period } = await prisma.$transaction(async (tx) => {
-      const record = await createDailyRecord(
-        { telegramId, workDate: todayDate, recordType: "WORK", startTime, expectedEndTime },
-        tx
-      );
-      const period = await createWorkPeriod({ dailyRecordId: record.id, startTime }, tx);
-      return { record, period };
-    });
+    const { record, period } = await prisma
+      .$transaction(async (tx) => {
+        const record = await createDailyRecord(
+          { telegramId, workDate: todayDate, recordType: "WORK", startTime, expectedEndTime },
+          tx
+        );
+        const period = await createWorkPeriod({ dailyRecordId: record.id, startTime }, tx);
+        return { record, period };
+      })
+      .catch(rethrowConcurrentStart);
     return { record, periods: toWorkPeriodViews([period], startTime), workedMinutesSoFar: 0 };
   }
 
@@ -142,27 +145,44 @@ export async function startWorkday(
     requiredMinutes - existingToday.creditedMinutes - workedMinutesSoFar
   );
 
-  const { record, period } = await prisma.$transaction(async (tx) => {
-    const record = await updateDailyRecord(
-      existingToday.id,
-      {
-        // The record keeps the day's first start; endTime is cleared while
-        // the new period is open.
-        startTime: existingToday.startTime ?? startTime,
-        endTime: null,
-        expectedEndTime: calcExpectedEndTime(startTime, remainingRequired),
-      },
-      tx
-    );
-    const period = await createWorkPeriod({ dailyRecordId: existingToday.id, startTime }, tx);
-    return { record, period };
-  });
+  const { record, period } = await prisma
+    .$transaction(async (tx) => {
+      const record = await updateDailyRecord(
+        existingToday.id,
+        {
+          // The record keeps the day's first start; endTime is cleared while
+          // the new period is open.
+          startTime: existingToday.startTime ?? startTime,
+          endTime: null,
+          expectedEndTime: calcExpectedEndTime(startTime, remainingRequired),
+        },
+        tx
+      );
+      const period = await createWorkPeriod({ dailyRecordId: existingToday.id, startTime }, tx);
+      return { record, period };
+    })
+    .catch(rethrowConcurrentStart);
 
   return {
     record,
     periods: toWorkPeriodViews([...earlierPeriods, period], startTime),
     workedMinutesSoFar,
   };
+}
+
+/**
+ * Turns a unique-constraint violation (Prisma P2002) raised by startWorkday's
+ * write into DAILY_RECORD_ALREADY_EXISTS. It means a concurrent /start won the
+ * race — it created today's record first (unique telegramId + workDate) or
+ * opened a period first (at most one open period per record, a partial unique
+ * index in the migrations) — and this transaction rolled back. Anything else
+ * is rethrown unchanged.
+ */
+function rethrowConcurrentStart(err: unknown): never {
+  if (typeof err === "object" && err !== null && (err as { code?: unknown }).code === "P2002") {
+    throw new AppError("DAILY_RECORD_ALREADY_EXISTS", "You have already started today's workday.");
+  }
+  throw err;
 }
 
 /**

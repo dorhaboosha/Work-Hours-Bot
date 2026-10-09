@@ -92,6 +92,57 @@ describe("Work periods — start/end/status (integration)", () => {
     }
   });
 
+  it("opens only one period when two /start requests race on a closed day", async () => {
+    const settings = await createTestSettings();
+    const telegramId = settings.telegramId;
+
+    try {
+      await startWorkday(telegramId, settings);
+      await endWorkday(telegramId, settings);
+
+      // Both read "no open period" before either writes; the partial unique
+      // index lets only one of them commit.
+      const results = await Promise.allSettled([
+        startWorkday(telegramId, settings),
+        startWorkday(telegramId, settings),
+      ]);
+
+      assert.equal(results.filter((r) => r.status === "fulfilled").length, 1);
+      const rejected = results.find((r) => r.status === "rejected") as PromiseRejectedResult;
+      assert.equal((rejected.reason as { code: string }).code, "DAILY_RECORD_ALREADY_EXISTS");
+
+      const record = await prisma.dailyRecord.findFirstOrThrow({ where: { telegramId } });
+      assert.equal(record.endTime, null);
+      assert.equal(await prisma.workPeriod.count({ where: { dailyRecordId: record.id } }), 2);
+      assert.equal(
+        await prisma.workPeriod.count({ where: { dailyRecordId: record.id, endTime: null } }),
+        1
+      );
+    } finally {
+      await cleanupTestUser(telegramId);
+    }
+  });
+
+  it("creates only one record when the day's first /start is sent twice at once", async () => {
+    const settings = await createTestSettings();
+    const telegramId = settings.telegramId;
+
+    try {
+      const results = await Promise.allSettled([
+        startWorkday(telegramId, settings),
+        startWorkday(telegramId, settings),
+      ]);
+
+      assert.equal(results.filter((r) => r.status === "fulfilled").length, 1);
+      const rejected = results.find((r) => r.status === "rejected") as PromiseRejectedResult;
+      assert.equal((rejected.reason as { code: string }).code, "DAILY_RECORD_ALREADY_EXISTS");
+      assert.equal(await prisma.dailyRecord.count({ where: { telegramId } }), 1);
+      assert.equal(await prisma.workPeriod.count({ where: { dailyRecord: { telegramId } } }), 1);
+    } finally {
+      await cleanupTestUser(telegramId);
+    }
+  });
+
   it("rejects a fifth period and leaves the day unchanged", async () => {
     const settings = await createTestSettings();
     const telegramId = settings.telegramId;

@@ -327,6 +327,50 @@ describe("WorkdayService", async () => {
     });
   });
 
+  describe("startWorkday – a concurrent /start wins the race", () => {
+    const uniqueViolation = () =>
+      Object.assign(new Error("Unique constraint failed"), { code: "P2002" });
+
+    it("maps a unique violation while opening another period to DAILY_RECORD_ALREADY_EXISTS", async () => {
+      mockFindRecordByDate.mock.mockImplementationOnce(async () => ({
+        ...makeTodayOpenRecord(START_10H_AGO),
+        endTime: START_1H_AGO,
+        workedMinutes: 540,
+      }));
+      mockListWorkPeriods.mock.mockImplementationOnce(async () => [
+        makePeriod(START_10H_AGO, START_1H_AGO),
+      ]);
+      mockCreateWorkPeriod.mock.mockImplementationOnce(async () => {
+        throw uniqueViolation();
+      });
+
+      await assert.rejects(() => startWorkday("user1"), (err: unknown) => {
+        assert.equal((err as { code: string }).code, "DAILY_RECORD_ALREADY_EXISTS");
+        return true;
+      });
+    });
+
+    it("maps a unique violation while creating today's record to DAILY_RECORD_ALREADY_EXISTS", async () => {
+      mockCreateDailyRecord.mock.mockImplementationOnce(async () => {
+        throw uniqueViolation();
+      });
+
+      await assert.rejects(() => startWorkday("user1"), (err: unknown) => {
+        assert.equal((err as { code: string }).code, "DAILY_RECORD_ALREADY_EXISTS");
+        return true;
+      });
+    });
+
+    it("rethrows any other database error unchanged", async () => {
+      const otherError = Object.assign(new Error("Connection lost"), { code: "P1001" });
+      mockCreateDailyRecord.mock.mockImplementationOnce(async () => {
+        throw otherError;
+      });
+
+      await assert.rejects(() => startWorkday("user1"), (err: unknown) => err === otherError);
+    });
+  });
+
   describe("startWorkday – another period on a closed day", () => {
     // Period 1: 6h ago → 1h ago (300 min), so the day is closed with 300 worked.
     const FIRST_START = new Date(Date.now() - 6 * 60 * MIN);
