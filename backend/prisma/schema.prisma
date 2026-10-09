@@ -60,7 +60,8 @@ model DailyRecord {
   startTime       DateTime?       @map("start_time")
   expectedEndTime DateTime?       @map("expected_end_time")
   endTime         DateTime?       @map("end_time")
-  // Actual worked minutes only (from start/end times). 0 for full-day absences.
+  // Actual worked minutes only — the sum of this day's closed work periods.
+  // 0 for full-day absences.
   workedMinutes   Int?            @map("worked_minutes")
   // Minutes credited by an absence (leave or company-paid time), snapshotted
   // when the absence is marked. A day's total = creditedMinutes + workedMinutes.
@@ -71,6 +72,11 @@ model DailyRecord {
   // absence type refund exactly what this record previously debited.
   debitedLeaveField String? @map("debited_leave_field")
   debitedLeaveDays  Float?  @map("debited_leave_days")
+
+  // The start/end periods worked on this day (office, then home, ...).
+  // startTime/endTime above mirror the day's first start and last end
+  // (endTime null while a period is open).
+  workPeriods     WorkPeriod[]
 
   createdAt       DateTime        @default(now()) @map("created_at")
   updatedAt       DateTime        @updatedAt @map("updated_at")
@@ -84,4 +90,23 @@ model DailyRecord {
   // open work session.
   @@index([telegramId, endTime])
   @@map("daily_records")
+}
+
+/// One start/end period worked on a day. A day can have several (e.g. office
+/// in the morning, home in the afternoon); its DailyRecord.workedMinutes is
+/// the sum of its closed periods. At most one period per day is open
+/// (endTime null) at a time.
+model WorkPeriod {
+  id            String      @id @default(uuid())
+  dailyRecordId String      @map("daily_record_id")
+  dailyRecord   DailyRecord @relation(fields: [dailyRecordId], references: [id], onDelete: Cascade)
+  startTime     DateTime    @map("start_time")
+  endTime       DateTime?   @map("end_time")
+
+  createdAt     DateTime    @default(now()) @map("created_at")
+  updatedAt     DateTime    @updatedAt @map("updated_at")
+
+  // Periods are always read per day, in start order.
+  @@index([dailyRecordId, startTime])
+  @@map("work_periods")
 }
