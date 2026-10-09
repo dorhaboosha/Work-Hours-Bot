@@ -36,8 +36,9 @@ It was built as a backend-focused project with an emphasis on clean architecture
 ## Features
 
 - **Daily work tracking** — clock in with `/start`, check progress with `/status`, and close the day with `/end`
+- **Multiple work periods** — took a break, or left the office early and finished from home? After `/end`, send `/start` again to log another period on the same day (up to 4). `/status`, `/end` and `/record` list each period with the day's total, and the balance and summaries count them all. Periods can't cross midnight
 - **Record lookup** — use `/record dd-mm` to instantly view the details of any specific date (read-only)
-- **Edit past dates** — use `/edit dd-mm` to fix hours or mark absences on any workday
+- **Edit past dates** — use `/edit dd-mm` to fix hours or mark absences on any workday: set the whole day as one period, or add, edit or delete a single work period (periods can't overlap; deleting a day's only period asks for confirmation)
 - **Absence types** — sick, vacation, holiday, holiday eve, unpaid absence, and election (via the edit flow). Holidays, holiday eves and election days are company-paid and never debit your vacation balance
 - **Half days** — vacation and sick days can be marked as a full or half day. On a holiday eve the company covers half, and you choose whether the other half was a ½ vacation day or worked. Log the worked half with `/start` and `/end`, or with `/edit dd-mm` → *Log hours worked*
 - **Chol HaMoed hours** — set a reduced daily requirement for Chol HaMoed (Sukkot and Pesach) in `/settings_edit`. The bot recognizes those days automatically from the Hebrew calendar (Israeli schedule) and uses the reduced hours for required time, expected end time, balances and absence credits
@@ -52,11 +53,11 @@ It was built as a backend-focused project with an emphasis on clean architecture
 | `/setup` | First-time setup: daily required hours, workdays, and timezone |
 | `/settings` | Show your current work settings |
 | `/settings_edit` | Change daily hours, Chol HaMoed hours, workdays, timezone, or leave rates and balances |
-| `/start` | Start today's workday |
-| `/status` | Show today's active workday status |
-| `/end` | End today's active workday |
-| `/record dd-mm` | View the record for a specific date (e.g. `/record 12-06`) |
-| `/edit dd-mm` | Edit or fix a specific date (e.g. `/edit 12-06`) |
+| `/start` | Start today's workday — or, after `/end`, another work period on the same day |
+| `/status` | Show today's active workday status, with each work period |
+| `/end` | End the current work period and show the day's total |
+| `/record dd-mm` | View the record for a specific date, with each work period (e.g. `/record 12-06`) |
+| `/edit dd-mm` | Edit or fix a specific date, including its work periods (e.g. `/edit 12-06`) |
 | `/week` | Show current week summary |
 | `/month` | Show current month summary |
 | `/help` | List all available commands |
@@ -111,7 +112,7 @@ A background job (`backend/src/jobs/RecordRetentionJob.ts`) purges daily work re
 | ORM | Prisma |
 | Validation | Zod |
 | Package Manager | npm Workspaces |
-| Deployment | Render |
+| Deployment | Render (app), Neon (database) |
 | Local Development | Docker |
 
 ## Project Structure
@@ -191,11 +192,13 @@ Edit `backend/.env` and set at minimum:
 | Variable | Local value |
 |---|---|
 | `DATABASE_URL` | `postgresql://workhours:workhours_password@localhost:5435/workhours_bot` |
-| `TELEGRAM_BOT_TOKEN` | Your token from BotFather |
+| `TELEGRAM_BOT_TOKEN` | A token from BotFather — use a **separate dev bot**, not your production bot's token (see below) |
 | `OWNER_TELEGRAM_ID` | Your numeric Telegram user ID (from [@userinfobot](https://t.me/userinfobot)) — the bot ignores everyone else |
 | `NODE_ENV` | `development` |
 
 `PORT` defaults to `3000` if omitted. See `backend/.env.example` for production notes.
+
+The bot uses long polling, and Telegram delivers each bot's updates to only one running instance. Running locally with the production token while production is up makes the two fight over messages (`409 Conflict`). Create a second bot with `/newbot` in BotFather for local development; `OWNER_TELEGRAM_ID` stays your own account.
 
 ### 4. Run migrations
 
@@ -217,14 +220,14 @@ npm run dev
 
 You should see `Server running on port 3000 [development]`. In Telegram, send `/setup` to configure your account, then `/start` to begin tracking.
 
-## Deployment (Render)
+## Deployment (Render + Neon)
 
-Production runs as a single Node process: Express (including `GET /health`) and the Telegram bot (long-polling) together. The deployment checklist in `openspec/changes/remove-multi-language-support/tasks.md` (section 9) captures the full Render setup; the summary below matches what is configured in production.
+Production runs as a single Node process on Render: Express (including `GET /health`) and the Telegram bot (long-polling) together. The PostgreSQL database is hosted on [Neon](https://neon.tech). The deployment checklist in `openspec/changes/remove-multi-language-support/tasks.md` (section 9) captures the full Render setup; the summary below matches what is configured in production.
 
-### Render services
+### Services
 
-1. **PostgreSQL** — provision a database in the same region as the web service. Use the **Internal Database URL** for the web service env var.
-2. **Web Service** — connect the GitHub repo and use the commands below.
+1. **PostgreSQL (Neon)** — create a Neon project and use its connection string as `DATABASE_URL`. Migrations run against it from the Render build (below); Prisma recommends Neon's direct (non-`-pooler`) connection string if a migration ever fails with a lock or timeout error.
+2. **Web Service (Render)** — connect the GitHub repo and use the commands below.
 
 | Setting | Value |
 |---|---|
@@ -241,7 +244,7 @@ Set these on the Render Web Service (see also `backend/.env.example` for local d
 
 | Variable | Required | Description |
 |---|---|---|
-| `DATABASE_URL` | Yes | PostgreSQL connection string. Use Render's **Internal** URL when the database and web service are in the same region. |
+| `DATABASE_URL` | Yes | The Neon PostgreSQL connection string. Mark as **Secret** in Render. |
 | `TELEGRAM_BOT_TOKEN` | Yes | Bot token from [@BotFather](https://t.me/BotFather). Mark as **Secret** in Render. |
 | `OWNER_TELEGRAM_ID` | Yes | Your numeric Telegram user ID (from [@userinfobot](https://t.me/userinfobot)). The bot silently ignores every other Telegram user. |
 | `NODE_ENV` | Yes | Set to `production`. |
